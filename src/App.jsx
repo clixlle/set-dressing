@@ -724,9 +724,9 @@ function ViewablePhoto({ src, name }) {
   );
 }
 
-function ItemModal({ item, isAdmin, onClose, onSave, onDelete, furnitureTypes, decorTypes, kitchenTypes, customTypes }) {
+function ItemModal({ item, isAdmin, onClose, onSave, onStatusChange, onDelete, furnitureTypes, decorTypes, kitchenTypes, customTypes }) {
   const [draft, setDraft] = useState(item);
-  useEffect(() => setDraft(item), [item]);
+  useEffect(() => setDraft(item), [item.id]);
   const inputStyle = { width: "100%", border: "none", borderRadius: 12, padding: "11px 12px", fontSize: 14, fontFamily: "'Plus Jakarta Sans', sans-serif", background: T.field, color: T.ink, boxSizing: "border-box" };
   const labelStyle = { fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: T.inkSoft, marginBottom: 7, display: "block" };
 
@@ -802,7 +802,7 @@ function ItemModal({ item, isAdmin, onClose, onSave, onDelete, furnitureTypes, d
 
         <div style={{ marginBottom: 22 }}>
           <span style={labelStyle}>Status</span>
-          <StatusPicker status={draft.status} onChange={(s) => { const updated = { ...draft, status: s }; setDraft(updated); onSave(updated); }} width={200} />
+          <StatusPicker status={draft.status} onChange={(s) => { setDraft((d) => ({ ...d, status: s })); onStatusChange(draft.id, s); }} width={200} />
         </div>
 
         {isAdmin && (
@@ -1286,24 +1286,48 @@ export default function ModelingLibraryApp() {
 
   const setStatus = useCallback(async (id, status) => {
     const updatedAt = Date.now();
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, status, updatedAt } : i)));
+    let previous;
+    setItems((prev) => {
+      previous = prev;
+      return prev.map((i) => (i.id === id ? { ...i, status, updatedAt } : i));
+    });
     const { error } = await supabase.from("items").update({ status, updated_at: updatedAt }).eq("id", id);
-    if (error) console.error("Status update failed:", error);
+    if (error) {
+      console.error("Status update failed:", error);
+      setItems(previous); // the write didn't actually happen — don't leave the UI showing otherwise
+      setSyncError("That status change didn't save — please try again.");
+    }
   }, []);
 
   const saveItem = useCallback(async (updated) => {
     const withTimestamp = { ...updated, updatedAt: Date.now() };
-    setItems((prev) => prev.map((i) => (i.id === updated.id ? withTimestamp : i)));
+    let previous;
+    setItems((prev) => {
+      previous = prev;
+      return prev.map((i) => (i.id === updated.id ? withTimestamp : i));
+    });
     setOpenItemId(null);
     const { error } = await supabase.from("items").update(itemToRow(withTimestamp)).eq("id", updated.id);
-    if (error) console.error("Save failed:", error);
+    if (error) {
+      console.error("Save failed:", error);
+      setItems(previous);
+      setSyncError("That save didn't go through — please reopen the item and try again.");
+    }
   }, []);
 
   const deleteItem = useCallback(async (id) => {
-    setItems((prev) => prev.filter((i) => i.id !== id));
+    let previous;
+    setItems((prev) => {
+      previous = prev;
+      return prev.filter((i) => i.id !== id);
+    });
     setOpenItemId(null);
     const { error } = await supabase.from("items").delete().eq("id", id);
-    if (error) console.error("Delete failed:", error);
+    if (error) {
+      console.error("Delete failed:", error);
+      setItems(previous);
+      setSyncError("That delete didn't go through — please try again.");
+    }
   }, []);
 
   const createItem = useCallback(async (item) => {
@@ -1595,7 +1619,7 @@ export default function ModelingLibraryApp() {
         )}
       </div>
 
-      {openItem && <ItemModal item={openItem} isAdmin={isAdmin} onClose={() => setOpenItemId(null)} onSave={saveItem} onDelete={deleteItem}
+      {openItem && <ItemModal item={openItem} isAdmin={isAdmin} onClose={() => setOpenItemId(null)} onSave={saveItem} onStatusChange={setStatus} onDelete={deleteItem}
         furnitureTypes={furnitureTypes} decorTypes={decorTypes} kitchenTypes={kitchenTypes} customTypes={customTypes} />}
       {isAdmin && showAdd && <AddItemModal onClose={() => setShowAdd(false)} onCreate={createItem}
         furnitureTypes={furnitureTypes} decorTypes={decorTypes} kitchenTypes={kitchenTypes} customTypes={customTypes} />}
