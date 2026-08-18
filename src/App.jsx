@@ -678,7 +678,7 @@ function SortMenu({ organizeKey, specificValue, onPick }) {
 
       {open && (
         <div className="sd-sortmenu-panel" style={{
-          position: "absolute", top: "calc(100% + 8px)", left: 0, zIndex: 30,
+          position: "absolute", top: "calc(100% + 8px)", left: 0, zIndex: 60,
           width: "min(280px, 82vw)",
           background: T.cardAlt, borderRadius: 18, boxShadow: "0 16px 40px rgba(0,0,0,0.5)",
           padding: 8, maxHeight: 360, overflowY: "auto",
@@ -871,13 +871,13 @@ export default function ModelingLibraryApp() {
 
   return (
     <div className="sd-app" style={{
-      fontFamily: "'Plus Jakarta Sans', sans-serif", color: T.ink, borderRadius: 24,
-      background: `radial-gradient(140% 100% at 10% -10%, #23243A 0%, ${T.paper} 40%, ${T.paperDeep} 100%)`,
-      overflow: "hidden", minHeight: "100dvh", width: "100%", boxSizing: "border-box",
+      fontFamily: "'Plus Jakarta Sans', sans-serif", color: T.ink,
+      background: `radial-gradient(140% 60% at 10% -10%, #23243A 0%, ${T.paper} 40%, ${T.paperDeep} 100%)`,
+      width: "100%", boxSizing: "border-box", minHeight: "100vh",
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
-        html, body { margin: 0; padding: 0; background: ${T.paperDeep}; }
+        html, body { margin: 0; padding: 0; background: ${T.paperDeep}; min-height: 100%; }
         * { box-sizing: border-box; }
         input, select, textarea, button { font-family: inherit; }
         input:focus, select:focus { outline: 2px solid ${T.accentTo}66; }
@@ -889,24 +889,17 @@ export default function ModelingLibraryApp() {
         .sd-row-main { display: flex; align-items: center; gap: 14px; flex: 1 1 220px; min-width: 0; }
         select { -webkit-appearance: none; appearance: none; }
 
+        .sd-app-inner { max-width: 960px; margin: 0 auto; }
+
         /* ---------- Tablet & below ---------- */
         @media (max-width: 720px) {
-          .sd-app-inner { padding: 16px !important; max-height: none !important; }
+          .sd-app-inner { padding: 16px !important; }
           .sd-modal-grid { grid-template-columns: 1fr !important; }
         }
 
         /* ---------- Phones ---------- */
         @media (max-width: 520px) {
-          html, body { height: 100%; overflow: hidden; }
-          .sd-app {
-            position: fixed !important; inset: 0 !important; min-height: 0 !important;
-            border-radius: 0 !important; display: flex !important; flex-direction: column !important;
-          }
-          .sd-app-inner {
-            flex: 1 1 auto !important; height: auto !important; min-height: 0 !important;
-            max-height: none !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch !important;
-            padding: 14px !important;
-          }
+          .sd-app-inner { padding: 14px !important; }
           .sd-header { gap: 12px !important; }
           .sd-header-brand span { font-size: 17px !important; }
           .sd-add-btn { width: 100% !important; padding: 12px 16px !important; }
@@ -914,7 +907,13 @@ export default function ModelingLibraryApp() {
           .sd-search-wrap { width: 100% !important; flex: 1 1 auto !important; }
           .sd-sortmenu { width: 100% !important; }
           .sd-sortmenu-btn { max-width: none !important; width: 100% !important; }
-          .sd-sortmenu-panel { width: min(100%, 360px) !important; left: 0 !important; right: 0 !important; }
+          /* Anchored to the viewport (not the button) so it's always fully reachable
+             and independently scrollable, no matter where the page has scrolled to. */
+          .sd-sortmenu-panel {
+            position: fixed !important; top: 88px !important; left: 12px !important; right: 12px !important;
+            bottom: 12px !important; width: auto !important; max-height: none !important;
+            overflow-y: auto !important; -webkit-overflow-scrolling: touch !important;
+          }
           .sd-group-header { flex-wrap: wrap !important; }
           .sd-row { padding: 10px !important; gap: 10px !important; }
           .sd-row-photo { width: 64px !important; height: 64px !important; }
@@ -929,7 +928,7 @@ export default function ModelingLibraryApp() {
         }
       `}</style>
 
-      <div className="sd-app-inner" style={{ padding: "22px 26px", maxHeight: "84vh", minHeight: 520, overflowY: "auto" }}>
+      <div className="sd-app-inner" style={{ padding: "22px 26px" }}>
         {syncError && (
           <div style={{
             background: "rgba(255,107,107,0.14)", border: "1px solid rgba(255,107,107,0.4)", color: "#FFB4B4",
