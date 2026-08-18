@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import {
   Search, Plus, X, ChevronDown, ChevronRight, Trash2, Camera, Check, Clock, Circle, Boxes, Loader2, Download, Pencil, ClipboardPaste
 } from "lucide-react";
-import { supabase, rowToItem, itemToRow, supabaseConfigError } from "./supabaseClient";
+import { supabase, rowToItem, itemToRow, supabaseConfigError, signIn, signOut, roleForEmail } from "./supabaseClient";
 
 /* ============================== DESIGN TOKENS ============================== */
 const T = {
@@ -654,7 +654,16 @@ const ItemRow = React.memo(function ItemRow({ item, onOpen, onStatusChange }) {
 });
 
 /* ============================== ITEM MODAL (edit) ============================== */
-function ItemModal({ item, onClose, onSave, onDelete }) {
+function ReadOnlyField({ label, value }) {
+  return (
+    <div>
+      <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: T.inkSoft, marginBottom: 7, display: "block" }}>{label}</span>
+      <div style={{ padding: "11px 12px", borderRadius: 12, background: T.field, color: T.ink, fontSize: 14, minHeight: 20 }}>{value || "—"}</div>
+    </div>
+  );
+}
+
+function ItemModal({ item, isAdmin, onClose, onSave, onDelete }) {
   const [draft, setDraft] = useState(item);
   useEffect(() => setDraft(item), [item]);
   const inputStyle = { width: "100%", border: "none", borderRadius: 12, padding: "11px 12px", fontSize: 14, fontFamily: "'Plus Jakarta Sans', sans-serif", background: T.field, color: T.ink, boxSizing: "border-box" };
@@ -664,70 +673,92 @@ function ItemModal({ item, onClose, onSave, onDelete }) {
     <div className="sd-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(6,6,10,0.72)", zIndex: 50, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "5vh 16px", overflowY: "auto" }} onClick={onClose}>
       <div className="sd-modal" style={{ background: T.paperDeep, borderRadius: 26, maxWidth: 460, width: "100%", padding: 26, boxShadow: "0 24px 70px rgba(0,0,0,0.55)" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 19, fontWeight: 800, color: T.ink }}>Edit item</span>
+          <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 19, fontWeight: 800, color: T.ink }}>{isAdmin ? "Edit item" : draft.name}</span>
           <button onClick={onClose} style={{ background: T.cardAlt, border: "none", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X size={16} color={T.inkSoft} /></button>
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <span style={labelStyle}>Name</span>
-          <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} style={inputStyle} />
-        </div>
+        {isAdmin ? (
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <span style={labelStyle}>Name</span>
+              <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} style={inputStyle} />
+            </div>
 
-        <div style={{ marginBottom: 18 }}>
-          <span style={labelStyle}>Photo</span>
-          <PhotoField src={draft.photo} name={draft.name} onUpload={(url) => setDraft({ ...draft, photo: url })} onDelete={() => setDraft({ ...draft, photo: null })} />
-        </div>
+            <div style={{ marginBottom: 18 }}>
+              <span style={labelStyle}>Photo</span>
+              <PhotoField src={draft.photo} name={draft.name} onUpload={(url) => setDraft({ ...draft, photo: url })} onDelete={() => setDraft({ ...draft, photo: null })} />
+            </div>
 
-        <div className="sd-modal-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
-          <div>
-            <span style={labelStyle}>Object type</span>
-            <select value={draft.type} onChange={(e) => {
-              setDraft({ ...draft, type: e.target.value, typeGroup: typeGroupFor(e.target.value) });
-            }} style={inputStyle}>
-              <optgroup label="Furniture">{FURNITURE_TYPES.map((t) => <option key={t}>{t}</option>)}</optgroup>
-              <optgroup label="Decor">{DECOR_TYPES.map((t) => <option key={t}>{t}</option>)}</optgroup>
-              <optgroup label="Kitchen System">{KITCHEN_TYPES.map((t) => <option key={t}>{t}</option>)}</optgroup>
-            </select>
-          </div>
-          <div>
-            <span style={labelStyle}>Style</span>
-            <select value={draft.style} onChange={(e) => setDraft({ ...draft, style: e.target.value })} style={inputStyle}>
-              {STYLE_NAMES.map((s) => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <span style={labelStyle}>Room</span>
-            <select value={draft.room} onChange={(e) => setDraft({ ...draft, room: e.target.value })} style={inputStyle}>
-              {ROOMS.map((r) => <option key={r}>{r}</option>)}
-            </select>
-          </div>
-        </div>
+            <div className="sd-modal-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
+              <div>
+                <span style={labelStyle}>Object type</span>
+                <select value={draft.type} onChange={(e) => {
+                  setDraft({ ...draft, type: e.target.value, typeGroup: typeGroupFor(e.target.value) });
+                }} style={inputStyle}>
+                  <optgroup label="Furniture">{FURNITURE_TYPES.map((t) => <option key={t}>{t}</option>)}</optgroup>
+                  <optgroup label="Decor">{DECOR_TYPES.map((t) => <option key={t}>{t}</option>)}</optgroup>
+                  <optgroup label="Kitchen System">{KITCHEN_TYPES.map((t) => <option key={t}>{t}</option>)}</optgroup>
+                </select>
+              </div>
+              <div>
+                <span style={labelStyle}>Style</span>
+                <select value={draft.style} onChange={(e) => setDraft({ ...draft, style: e.target.value })} style={inputStyle}>
+                  {STYLE_NAMES.map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <span style={labelStyle}>Room</span>
+                <select value={draft.room} onChange={(e) => setDraft({ ...draft, room: e.target.value })} style={inputStyle}>
+                  {ROOMS.map((r) => <option key={r}>{r}</option>)}
+                </select>
+              </div>
+            </div>
 
-        <div style={{ marginBottom: 18 }}>
-          <span style={labelStyle}>Description</span>
-          <textarea
-            value={draft.description || ""}
-            onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-            placeholder="Notes, specs, or anything future you (or a teammate) should know about this piece…"
-            rows={3}
-            style={{ ...inputStyle, resize: "vertical", fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-          />
-        </div>
+            <div style={{ marginBottom: 18 }}>
+              <span style={labelStyle}>Description</span>
+              <textarea
+                value={draft.description || ""}
+                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                placeholder="Notes, specs, or anything future you (or a teammate) should know about this piece…"
+                rows={3}
+                style={{ ...inputStyle, resize: "vertical", fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            {draft.photo && (
+              <div style={{ marginBottom: 18 }}>
+                <img src={draft.photo} alt="" style={{ width: "100%", aspectRatio: "1 / 1", maxHeight: 280, objectFit: "cover", borderRadius: 18 }} />
+              </div>
+            )}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
+              <ReadOnlyField label="Object type" value={draft.type} />
+              <ReadOnlyField label="Style" value={draft.style} />
+              <div style={{ gridColumn: "1 / -1" }}><ReadOnlyField label="Room" value={draft.room} /></div>
+            </div>
+            {draft.description && (
+              <div style={{ marginBottom: 18 }}><ReadOnlyField label="Description" value={draft.description} /></div>
+            )}
+          </>
+        )}
 
         <div style={{ marginBottom: 22 }}>
           <span style={labelStyle}>Status</span>
-          <StatusPicker status={draft.status} onChange={(s) => setDraft({ ...draft, status: s })} width={200} />
+          <StatusPicker status={draft.status} onChange={(s) => { const updated = { ...draft, status: s }; setDraft(updated); onSave(updated); }} width={200} />
         </div>
 
-        <div className="sd-modal-actions" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, paddingTop: 16, borderTop: `1px solid ${T.line}` }}>
-          <button onClick={() => onDelete(draft.id)} style={{ background: "none", border: "none", color: T.danger, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 5, fontWeight: 700, padding: "8px 4px", flexShrink: 0 }}>
-            <Trash2 size={14} /> Delete
-          </button>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={onClose} style={{ background: T.cardAlt, border: "none", borderRadius: 999, padding: "10px 18px", cursor: "pointer", fontSize: 13.5, fontWeight: 700, color: T.inkSoft, minHeight: 40 }}>Cancel</button>
-            <button onClick={() => onSave({ ...draft, updatedAt: Date.now() })} style={{ background: ACCENT_GRADIENT, color: "#1A0F0A", border: "none", borderRadius: 999, padding: "10px 22px", cursor: "pointer", fontSize: 13.5, fontWeight: 800, minHeight: 40, boxShadow: `0 6px 20px ${T.accentTo}44` }}>Save</button>
+        {isAdmin && (
+          <div className="sd-modal-actions" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, paddingTop: 16, borderTop: `1px solid ${T.line}` }}>
+            <button onClick={() => onDelete(draft.id)} style={{ background: "none", border: "none", color: T.danger, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 5, fontWeight: 700, padding: "8px 4px", flexShrink: 0 }}>
+              <Trash2 size={14} /> Delete
+            </button>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={onClose} style={{ background: T.cardAlt, border: "none", borderRadius: 999, padding: "10px 18px", cursor: "pointer", fontSize: 13.5, fontWeight: 700, color: T.inkSoft, minHeight: 40 }}>Cancel</button>
+              <button onClick={() => onSave({ ...draft, updatedAt: Date.now() })} style={{ background: ACCENT_GRADIENT, color: "#1A0F0A", border: "none", borderRadius: 999, padding: "10px 22px", cursor: "pointer", fontSize: 13.5, fontWeight: 800, minHeight: 40, boxShadow: `0 6px 20px ${T.accentTo}44` }}>Save</button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -905,7 +936,79 @@ function SortMenu({ organizeKey, specificValue, onPick }) {
   );
 }
 
+/* ============================== LOGIN SCREEN ============================== */
+function LoginScreen({ onSignedIn }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!username.trim() || !password) return;
+    setSubmitting(true);
+    setError("");
+    const { error: signInError } = await signIn(username, password);
+    setSubmitting(false);
+    if (signInError) {
+      setError("Incorrect username or password.");
+      return;
+    }
+    onSignedIn();
+  };
+
+  const inputStyle = {
+    width: "100%", border: "none", borderRadius: 12, padding: "12px 14px", fontSize: 14,
+    fontFamily: "'Plus Jakarta Sans', sans-serif", background: T.field, color: T.ink, boxSizing: "border-box",
+  };
+
+  return (
+    <div style={{
+      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+      fontFamily: "'Plus Jakarta Sans', sans-serif", color: T.ink,
+      background: `radial-gradient(140% 60% at 10% -10%, #23243A 0%, ${T.paper} 40%, ${T.paperDeep} 100%)`,
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+        html, body { margin: 0; padding: 0; background: ${T.paperDeep}; }
+        input:focus { outline: 2px solid ${T.accentTo}66; }
+      `}</style>
+      <form onSubmit={submit} style={{ width: "100%", maxWidth: 360, background: T.card, borderRadius: 22, padding: 28, boxShadow: "0 20px 60px rgba(0,0,0,0.4)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 11, background: ACCENT_GRADIENT, display: "flex",
+            alignItems: "center", justifyContent: "center", flexShrink: 0,
+          }}>
+            <Boxes size={18} color="#1A0F0A" />
+          </div>
+          <span style={{ fontSize: 19, fontWeight: 800 }}>Set Dressing</span>
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: T.inkSoft, marginBottom: 6, display: "block" }}>Username</span>
+          <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus autoCapitalize="none" autoCorrect="off" style={inputStyle} />
+        </div>
+        <div style={{ marginBottom: 20 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: T.inkSoft, marginBottom: 6, display: "block" }}>Password</span>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={inputStyle} />
+        </div>
+
+        {error && <div style={{ color: T.danger, fontSize: 12.5, fontWeight: 600, marginBottom: 14 }}>{error}</div>}
+
+        <button type="submit" disabled={submitting} style={{
+          width: "100%", background: ACCENT_GRADIENT, color: "#1A0F0A", border: "none", borderRadius: 999,
+          padding: "12px 18px", cursor: submitting ? "default" : "pointer", fontSize: 14, fontWeight: 800,
+          opacity: submitting ? 0.7 : 1,
+        }}>
+          {submitting ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export default function ModelingLibraryApp() {
+  const [session, setSession] = useState(undefined); // undefined = still checking, null = signed out
   const [items, setItems] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [syncError, setSyncError] = useState(null);
@@ -916,9 +1019,23 @@ export default function ModelingLibraryApp() {
   const [showAdd, setShowAdd] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
 
-  // Initial load from Supabase — if the table is empty (first run ever), seed it once.
-  // If it already has data, reconcile it: remove retired item types, and backfill any
-  // whole category that's missing (e.g. a batch insert that failed partway through).
+  // Auth: check for an existing session, and keep it in sync if it changes.
+  useEffect(() => {
+    if (supabaseConfigError) { setSession(null); return; }
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  const role = session ? roleForEmail(session.user.email) : null;
+  const isAdmin = role === "admin";
+
+  // Initial load from Supabase — runs once signed in. If the table is empty
+  // (first run ever), seed it once. If it already has data, an admin session
+  // also reconciles it: removes retired item types, and backfills any whole
+  // category that's missing (e.g. a batch insert that failed partway through).
   useEffect(() => {
     if (supabaseConfigError) {
       setSyncError(supabaseConfigError);
@@ -926,12 +1043,13 @@ export default function ModelingLibraryApp() {
       setLoaded(true);
       return;
     }
+    if (!session) return; // wait until signed in
     (async () => {
       try {
         let { data, error } = await supabase.from("items").select("*");
         if (error) throw error;
 
-        if (!data || data.length === 0) {
+        if ((!data || data.length === 0) && isAdmin) {
           const seed = buildSeedItems();
           setItems(seed);
           const rows = seed.map(itemToRow);
@@ -940,7 +1058,7 @@ export default function ModelingLibraryApp() {
             const { error: insertError } = await supabase.from("items").insert(rows.slice(i, i + chunkSize));
             if (insertError) throw insertError;
           }
-        } else {
+        } else if (isAdmin) {
           // Remove retired item types that may already exist from an earlier seed.
           const { error: delError } = await supabase.from("items").delete().eq("type", "Kitchen Island");
           if (delError) console.error("Cleanup delete failed:", delError);
@@ -962,6 +1080,8 @@ export default function ModelingLibraryApp() {
           }
 
           setItems(data.map(rowToItem));
+        } else {
+          setItems((data || []).map(rowToItem));
         }
       } catch (e) {
         console.error("Supabase load failed:", e);
@@ -970,11 +1090,11 @@ export default function ModelingLibraryApp() {
       }
       setLoaded(true);
     })();
-  }, []);
+  }, [session]);
 
   // Live sync — when anyone on any account changes an item, everyone else sees it immediately.
   useEffect(() => {
-    if (supabaseConfigError) return;
+    if (supabaseConfigError || !session) return;
     const channel = supabase
       .channel("items-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "items" }, (payload) => {
@@ -990,7 +1110,7 @@ export default function ModelingLibraryApp() {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [session]);
 
   const setStatus = useCallback(async (id, status) => {
     const updatedAt = Date.now();
@@ -1055,6 +1175,18 @@ export default function ModelingLibraryApp() {
   }, [filtered, specificValue, organizeMode]);
 
   const openItem = items && openItemId ? items.find((i) => i.id === openItemId) : null;
+
+  if (session === undefined) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", fontFamily: "'Plus Jakarta Sans', sans-serif", color: T.inkSoft, background: T.paperDeep }}>
+        <Loader2 className="spin" size={18} style={{ marginRight: 8 }} /> Loading…
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <LoginScreen onSignedIn={() => {}} />;
+  }
 
   if (!items) {
     return (
@@ -1153,17 +1285,27 @@ export default function ModelingLibraryApp() {
             </div>
             <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 19, color: T.ink, letterSpacing: -0.2 }}>Set Dressing</span>
           </div>
-          <button className="sd-add-btn" onClick={() => setShowAdd(true)} style={{
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: ACCENT_GRADIENT, color: "#1A0F0A", border: "none",
-            borderRadius: 999, padding: "11px 22px", cursor: "pointer", fontSize: 13.5, fontWeight: 800,
-            boxShadow: `0 6px 18px ${T.accentTo}4D`,
-            transition: "box-shadow .2s ease, transform .15s ease",
-          }}
-            onMouseEnter={(e) => { e.currentTarget.style.boxShadow = `0 8px 24px ${T.accentTo}66`; e.currentTarget.style.transform = "translateY(-1px)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.boxShadow = `0 6px 18px ${T.accentTo}4D`; e.currentTarget.style.transform = "none"; }}
-          >
-            <Plus size={15} /> Add Item
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {isAdmin && (
+              <button className="sd-add-btn" onClick={() => setShowAdd(true)} style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: ACCENT_GRADIENT, color: "#1A0F0A", border: "none",
+                borderRadius: 999, padding: "11px 22px", cursor: "pointer", fontSize: 13.5, fontWeight: 800,
+                boxShadow: `0 6px 18px ${T.accentTo}4D`,
+                transition: "box-shadow .2s ease, transform .15s ease",
+              }}
+                onMouseEnter={(e) => { e.currentTarget.style.boxShadow = `0 8px 24px ${T.accentTo}66`; e.currentTarget.style.transform = "translateY(-1px)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.boxShadow = `0 6px 18px ${T.accentTo}4D`; e.currentTarget.style.transform = "none"; }}
+              >
+                <Plus size={15} /> Add Item
+              </button>
+            )}
+            <button onClick={() => signOut()} style={{
+              background: T.cardAlt, color: T.inkSoft, border: "none", borderRadius: 999,
+              padding: "11px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700,
+            }}>
+              Log out
+            </button>
+          </div>
         </div>
 
         <div className="sd-toolbar" style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap", alignItems: "center" }}>
@@ -1226,8 +1368,8 @@ export default function ModelingLibraryApp() {
         )}
       </div>
 
-      {openItem && <ItemModal item={openItem} onClose={() => setOpenItemId(null)} onSave={saveItem} onDelete={deleteItem} />}
-      {showAdd && <AddItemModal onClose={() => setShowAdd(false)} onCreate={createItem} />}
+      {openItem && <ItemModal item={openItem} isAdmin={isAdmin} onClose={() => setOpenItemId(null)} onSave={saveItem} onDelete={deleteItem} />}
+      {isAdmin && showAdd && <AddItemModal onClose={() => setShowAdd(false)} onCreate={createItem} />}
     </div>
   );
 }

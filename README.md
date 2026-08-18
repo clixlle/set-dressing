@@ -45,12 +45,17 @@ cp .env.example .env   # then fill in your Supabase URL + anon key
 npm run dev
 ```
 
-## How data sharing works
-There's no login system — anyone who has the deployed URL can view and edit
-items, and changes sync live to everyone else via Supabase Realtime. That's
-intentional for a small internal team (like one shared spreadsheet), not
-meant for a public-facing app. If you ever want to lock it down to specific
-people, that's a Supabase Auth addition on top of this — just ask.
+## How login works
+There are exactly two accounts — Admin and Modeler — created by hand in the
+Supabase dashboard (Authentication → Users), not a public sign-up system.
+Admin can view, add, edit, and delete anything. Modeler can view everything
+and change an item's status, and nothing else — that restriction is enforced
+by the database itself (a Postgres trigger), not just hidden in the
+interface, so it holds even against a direct API call.
+
+If your database already existed before this was added, run
+`migrations/003_add_auth_roles.sql` once in the SQL Editor (new installs get
+this automatically from `supabase-setup.sql`).
 
 ## Notes
 - Photos are stored as base64 directly in the database. That's fine for a
