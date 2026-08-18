@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
-  Search, Plus, X, ChevronDown, ChevronRight, Trash2, Camera, Check, Clock, Circle, Boxes, Loader2
+  Search, Plus, X, ChevronDown, ChevronRight, Trash2, Camera, Check, Clock, Circle, Boxes, Loader2, Download, Pencil
 } from "lucide-react";
 import { supabase, rowToItem, itemToRow, supabaseConfigError } from "./supabaseClient";
 
@@ -472,6 +472,73 @@ function Photo({ src, onUpload, size = 84, editable = true, className }) {
   );
 }
 
+function downloadPhoto(dataUrl, name) {
+  const ext = (dataUrl.match(/^data:image\/(\w+);/) || [, "png"])[1];
+  const safeName = (name || "photo").replace(/[^a-z0-9\-_ ]/gi, "").trim().replace(/\s+/g, "-") || "photo";
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = `${safeName}.${ext}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+/* A larger photo preview with Change / Delete / Download actions, used in the modals. */
+function PhotoField({ src, onUpload, onDelete, name }) {
+  const inputRef = useRef(null);
+  return (
+    <div>
+      <div
+        onClick={() => inputRef.current?.click()}
+        style={{
+          width: "100%", aspectRatio: "1 / 1", maxHeight: 280, borderRadius: 18, overflow: "hidden",
+          background: src ? "#fff" : T.field, display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer", marginBottom: 12, position: "relative",
+        }}
+      >
+        {src ? (
+          <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, color: T.inkSoft }}>
+            <Camera size={40} strokeWidth={1.5} />
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Click to add a photo</span>
+          </div>
+        )}
+        <input ref={inputRef} type="file" accept="image/*" style={{ display: "none" }}
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (file) onUpload(await fileToDataUrl(file));
+            e.target.value = "";
+          }} />
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={() => inputRef.current?.click()} style={{
+          display: "flex", alignItems: "center", gap: 6, background: T.cardAlt, color: T.ink, border: "none",
+          borderRadius: 999, padding: "8px 14px", cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+        }}>
+          <Pencil size={13} /> {src ? "Change" : "Add"} photo
+        </button>
+        {src && (
+          <>
+            <button onClick={() => downloadPhoto(src, name)} style={{
+              display: "flex", alignItems: "center", gap: 6, background: T.cardAlt, color: T.ink, border: "none",
+              borderRadius: 999, padding: "8px 14px", cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+            }}>
+              <Download size={13} /> Download
+            </button>
+            <button onClick={onDelete} style={{
+              display: "flex", alignItems: "center", gap: 6, background: "rgba(255,107,107,0.12)", color: T.danger, border: "none",
+              borderRadius: 999, padding: "8px 14px", cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+            }}>
+              <Trash2 size={13} /> Delete photo
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ============================== ITEM ROW ============================== */
 const ItemRow = React.memo(function ItemRow({ item, onOpen, onStatusChange }) {
   const [statusOpen, setStatusOpen] = useState(false);
@@ -520,12 +587,14 @@ function ItemModal({ item, onClose, onSave, onDelete }) {
           <button onClick={onClose} style={{ background: T.cardAlt, border: "none", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X size={16} color={T.inkSoft} /></button>
         </div>
 
-        <div style={{ display: "flex", gap: 14, marginBottom: 18 }}>
-          <Photo src={draft.photo} size={84} onUpload={(url) => setDraft({ ...draft, photo: url })} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <span style={labelStyle}>Name</span>
-            <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} style={inputStyle} />
-          </div>
+        <div style={{ marginBottom: 16 }}>
+          <span style={labelStyle}>Name</span>
+          <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} style={inputStyle} />
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <span style={labelStyle}>Photo</span>
+          <PhotoField src={draft.photo} name={draft.name} onUpload={(url) => setDraft({ ...draft, photo: url })} onDelete={() => setDraft({ ...draft, photo: null })} />
         </div>
 
         <div className="sd-modal-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
@@ -593,12 +662,14 @@ function AddItemModal({ onClose, onCreate }) {
           <button onClick={onClose} style={{ background: T.cardAlt, border: "none", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X size={16} color={T.inkSoft} /></button>
         </div>
 
-        <div style={{ display: "flex", gap: 14, marginBottom: 18 }}>
-          <Photo src={draft.photo} size={84} onUpload={(url) => setDraft({ ...draft, photo: url })} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <span style={labelStyle}>Name</span>
-            <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder={suggestedName} style={inputStyle} />
-          </div>
+        <div style={{ marginBottom: 16 }}>
+          <span style={labelStyle}>Name</span>
+          <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder={suggestedName} style={inputStyle} />
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <span style={labelStyle}>Photo</span>
+          <PhotoField src={draft.photo} name={draft.name || suggestedName} onUpload={(url) => setDraft({ ...draft, photo: url })} onDelete={() => setDraft({ ...draft, photo: null })} />
         </div>
 
         <div className="sd-modal-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 22 }}>
@@ -740,7 +811,7 @@ export default function ModelingLibraryApp() {
   const [search, setSearch] = useState("");
   const [openItemId, setOpenItemId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [collapsed, setCollapsed] = useState(new Set());
+  const [expanded, setExpanded] = useState(new Set());
 
   // Initial load from Supabase — if the table is empty (first run ever), seed it once.
   useEffect(() => {
@@ -889,7 +960,15 @@ export default function ModelingLibraryApp() {
         .sd-row-main { display: flex; align-items: center; gap: 14px; flex: 1 1 220px; min-width: 0; }
         select { -webkit-appearance: none; appearance: none; }
 
-        .sd-app-inner { max-width: 960px; margin: 0 auto; }
+        .sd-app-inner { max-width: 1320px; margin: 0 auto; }
+
+        /* ---------- Large desktop ---------- */
+        @media (min-width: 1200px) {
+          .sd-app-inner { padding: 32px 48px; }
+          .sd-row { padding: 16px !important; }
+          .sd-row-photo { width: 108px !important; height: 108px !important; }
+          .sd-row-name { font-size: 18px !important; }
+        }
 
         /* ---------- Tablet & below ---------- */
         @media (max-width: 720px) {
@@ -979,12 +1058,12 @@ export default function ModelingLibraryApp() {
         <div style={{ fontSize: 13, color: T.inkSoft, marginBottom: 14, fontWeight: 600 }}>{filtered.length} item{filtered.length !== 1 ? "s" : ""}</div>
 
         {groups.map((g) => {
-          const isCollapsed = collapsed.has(g.key);
+          const isCollapsed = !specificValue && !search.trim() && !expanded.has(g.key);
           const doneCount = g.items.filter((i) => i.status === "complete").length;
           return (
             <div key={g.key} style={{ marginBottom: 8 }}>
               {!specificValue && (
-                <button className="sd-group-header" onClick={() => setCollapsed((prev) => { const next = new Set(prev); next.has(g.key) ? next.delete(g.key) : next.add(g.key); return next; })}
+                <button className="sd-group-header" onClick={() => setExpanded((prev) => { const next = new Set(prev); next.has(g.key) ? next.delete(g.key) : next.add(g.key); return next; })}
                   style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", cursor: "pointer", padding: "10px 2px", textAlign: "left" }}>
                   {isCollapsed ? <ChevronRight size={15} color={T.inkSoft} /> : <ChevronDown size={15} color={T.inkSoft} />}
                   <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 16, fontWeight: 800, color: T.ink }}>{g.key}</span>
