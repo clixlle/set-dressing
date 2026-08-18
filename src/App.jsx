@@ -1196,9 +1196,23 @@ export default function ModelingLibraryApp() {
             }
           }
           if (duplicateIds.length > 0) {
-            const { error: dedupError } = await supabase.from("items").delete().in("id", duplicateIds);
-            if (dedupError) console.error("Duplicate cleanup failed:", dedupError);
-            else setItems((prev) => prev.filter((i) => !duplicateIds.includes(i.id)));
+            console.log(`Cleaning up ${duplicateIds.length} duplicate item(s)…`);
+            const deleteChunkSize = 150; // keep each request's ID list well under URL length limits
+            let removed = 0;
+            for (let i = 0; i < duplicateIds.length; i += deleteChunkSize) {
+              const chunk = duplicateIds.slice(i, i + deleteChunkSize);
+              const { error: dedupError } = await supabase.from("items").delete().in("id", chunk);
+              if (dedupError) {
+                console.error("Duplicate cleanup failed on a chunk:", dedupError);
+              } else {
+                removed += chunk.length;
+                setItems((prev) => prev.filter((i) => !chunk.includes(i.id)));
+              }
+            }
+            console.log(`Removed ${removed} of ${duplicateIds.length} duplicate item(s).`);
+            if (removed < duplicateIds.length) {
+              setSyncError(`Cleaned up ${removed} duplicate items, but ${duplicateIds.length - removed} couldn't be removed — try reloading as admin again.`);
+            }
           }
         } else {
           setItems((data || []).map(rowToItem));
