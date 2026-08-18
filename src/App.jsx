@@ -1292,7 +1292,7 @@ export default function ModelingLibraryApp() {
     if (error) {
       console.error("Add category failed:", error);
       setCustomTypes((prev) => prev.filter((c) => c.id !== newType.id));
-      setSyncError("That category didn't save — please try again.");
+      setSyncError(`That category didn't save: ${error.message || "unknown error"}`);
     }
   }, []);
 
@@ -1306,7 +1306,7 @@ export default function ModelingLibraryApp() {
     if (error) {
       console.error("Save note failed:", error);
       setSectionNotes((prev) => ({ ...prev, [sectionKey]: previousValue }));
-      setSyncError("That note didn't save — please try again.");
+      setSyncError(`That note didn't save: ${error.message || "unknown error"}`);
       return false;
     }
     return true;
