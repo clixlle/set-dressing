@@ -195,7 +195,6 @@ const KITCHEN_WORKTOP_EDGE_PROFILES = [
   "Double Bullnose Edge",
 ];
 const KITCHEN_MODULE_TYPES = ["Door Profile", "Handle", "Toe Kick", "Worktop Thickness", "Worktop Edge Profile"];
-const DEFAULT_KITCHEN_BANNER = "All kitchen pieces must be designed as add-ons to the main base module. Variations such as cabinet doors, handles, countertops, shelves, and decorative elements should fit the base seamlessly without requiring modifications. All modules must share consistent dimensions, alignment, and connection points to ensure any combination of pieces can be mixed and matched together cleanly.";
 
 const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Plant", "Miscellaneous", ...KITCHEN_MODULE_TYPES];
 const FURNITURE_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Furniture").map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name)];
@@ -208,6 +207,25 @@ const ROOMS = ["Living Room", "Kitchen", "Dining Room", "Bedroom", "Bathroom", "
 
 function uid(prefix) {
   return prefix + "_" + Math.random().toString(36).slice(2, 10);
+}
+
+// A plain `.select("*")` silently caps out at Supabase's default 1000-row
+// response limit — with 1000+ items in this library, that quietly cuts off
+// whatever was inserted last (which happened to be the whole Kitchen System
+// category). This fetches every row, no matter how many there are.
+async function fetchAllItems() {
+  const pageSize = 1000;
+  let all = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase.from("items").select("*").range(from, from + pageSize - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
 }
 
 function typeGroupFor(typeName, customTypes = []) {
@@ -1091,9 +1109,9 @@ export default function ModelingLibraryApp() {
   const [showAdd, setShowAdd] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
   const [customTypes, setCustomTypes] = useState([]);
-  const [kitchenBanner, setKitchenBanner] = useState(DEFAULT_KITCHEN_BANNER);
-  const [editingBanner, setEditingBanner] = useState(false);
-  const [bannerDraft, setBannerDraft] = useState("");
+  const [sectionNotes, setSectionNotes] = useState({});
+  const [editingNoteFor, setEditingNoteFor] = useState("");
+  const [noteDraft, setNoteDraft] = useState("");
 
   // Auth: check for an existing session, and keep it in sync if it changes.
   useEffect(() => {
@@ -1122,8 +1140,7 @@ export default function ModelingLibraryApp() {
     if (!session) return; // wait until signed in
     (async () => {
       try {
-        let { data, error } = await supabase.from("items").select("*");
-        if (error) throw error;
+        let data = await fetchAllItems();
 
         if ((!data || data.length === 0) && isAdmin) {
           const seed = buildSeedItems();
@@ -1156,6 +1173,33 @@ export default function ModelingLibraryApp() {
           }
 
           setItems(data.map(rowToItem));
+
+          // Clean up duplicates that may have piled up from an earlier bug where
+          // a truncated read caused this same reconciliation step to repeatedly
+          // re-insert items it mistakenly thought were missing.
+          const seenKeys = new Map();
+          const duplicateIds = [];
+          for (const row of [...data].sort((a, b) => (a.created_at || 0) - (b.created_at || 0))) {
+            const key = `${row.name}|${row.type}|${row.style}`;
+            if (seenKeys.has(key)) {
+              // Prefer keeping whichever copy has actual progress on it.
+              const keptId = seenKeys.get(key);
+              const kept = data.find((r) => r.id === keptId);
+              if (kept && kept.status === "not-started" && row.status !== "not-started") {
+                seenKeys.set(key, row.id);
+                duplicateIds.push(keptId);
+              } else {
+                duplicateIds.push(row.id);
+              }
+            } else {
+              seenKeys.set(key, row.id);
+            }
+          }
+          if (duplicateIds.length > 0) {
+            const { error: dedupError } = await supabase.from("items").delete().in("id", duplicateIds);
+            if (dedupError) console.error("Duplicate cleanup failed:", dedupError);
+            else setItems((prev) => prev.filter((i) => !duplicateIds.includes(i.id)));
+          }
         } else {
           setItems((data || []).map(rowToItem));
         }
@@ -1188,15 +1232,18 @@ export default function ModelingLibraryApp() {
     return () => { supabase.removeChannel(channel); };
   }, [session]);
 
-  // Load admin-added categories and the editable Kitchen System note, and keep
-  // them synced live too.
+  // Load admin-added categories and per-section notes, and keep them synced live.
   useEffect(() => {
     if (supabaseConfigError || !session) return;
     (async () => {
       const { data: types } = await supabase.from("custom_types").select("*");
       if (types) setCustomTypes(types);
-      const { data: settings } = await supabase.from("app_settings").select("*").eq("key", "kitchen_banner").maybeSingle();
-      if (settings && settings.value) setKitchenBanner(settings.value);
+      const { data: settings } = await supabase.from("app_settings").select("*").like("key", "note_%");
+      if (settings) {
+        const notes = {};
+        for (const row of settings) notes[row.key.replace(/^note_/, "")] = row.value || "";
+        setSectionNotes(notes);
+      }
     })();
 
     const typesChannel = supabase
@@ -1213,7 +1260,10 @@ export default function ModelingLibraryApp() {
     const settingsChannel = supabase
       .channel("app-settings-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, (payload) => {
-        if (payload.new && payload.new.key === "kitchen_banner") setKitchenBanner(payload.new.value || DEFAULT_KITCHEN_BANNER);
+        const row = payload.new;
+        if (row && row.key && row.key.startsWith("note_")) {
+          setSectionNotes((prev) => ({ ...prev, [row.key.replace(/^note_/, "")]: row.value || "" }));
+        }
       })
       .subscribe();
 
@@ -1228,10 +1278,10 @@ export default function ModelingLibraryApp() {
     if (error) console.error("Add category failed:", error);
   }, []);
 
-  const saveBanner = useCallback(async (text) => {
-    setKitchenBanner(text);
-    const { error } = await supabase.from("app_settings").update({ value: text }).eq("key", "kitchen_banner");
-    if (error) console.error("Save banner failed:", error);
+  const saveNote = useCallback(async (sectionKey, text) => {
+    setSectionNotes((prev) => ({ ...prev, [sectionKey]: text }));
+    const { error } = await supabase.from("app_settings").upsert({ key: `note_${sectionKey}`, value: text });
+    if (error) console.error("Save note failed:", error);
   }, []);
 
   const setStatus = useCallback(async (id, status) => {
@@ -1461,17 +1511,18 @@ export default function ModelingLibraryApp() {
           )}
         </div>
 
-        {organizeKey === "kitchen" && (
+        {(sectionNotes[organizeKey] || isAdmin) && (
           <div style={{
             background: T.cardAlt, borderLeft: `3px solid ${T.accentTo}`, borderRadius: 12,
             padding: "14px 16px", marginBottom: 16, fontSize: 13, lineHeight: 1.55, color: T.inkSoft,
           }}>
-            {editingBanner ? (
+            {editingNoteFor === organizeKey ? (
               <div>
                 <textarea
-                  value={bannerDraft}
-                  onChange={(e) => setBannerDraft(e.target.value)}
+                  value={noteDraft}
+                  onChange={(e) => setNoteDraft(e.target.value)}
                   rows={4}
+                  placeholder={`Add a note for ${organizeMode.label}…`}
                   style={{
                     width: "100%", border: "none", borderRadius: 10, padding: "10px 12px", fontSize: 13,
                     fontFamily: "'Plus Jakarta Sans', sans-serif", background: T.field, color: T.ink,
@@ -1479,21 +1530,21 @@ export default function ModelingLibraryApp() {
                   }}
                 />
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => { saveBanner(bannerDraft); setEditingBanner(false); }} style={{
+                  <button onClick={() => { saveNote(organizeKey, noteDraft); setEditingNoteFor(""); }} style={{
                     background: T.accentTo, color: "#1A0F0A", border: "none", borderRadius: 999, padding: "7px 14px",
                     fontSize: 12, fontWeight: 800, cursor: "pointer",
                   }}>Save note</button>
-                  <button onClick={() => setEditingBanner(false)} style={{
+                  <button onClick={() => setEditingNoteFor("")} style={{
                     background: "none", color: T.inkSoft, border: "none", borderRadius: 999, padding: "7px 14px",
                     fontSize: 12, fontWeight: 700, cursor: "pointer",
                   }}>Cancel</button>
                 </div>
               </div>
-            ) : (
+            ) : sectionNotes[organizeKey] ? (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-                <span>{kitchenBanner}</span>
+                <span>{sectionNotes[organizeKey]}</span>
                 {isAdmin && (
-                  <button onClick={() => { setBannerDraft(kitchenBanner); setEditingBanner(true); }} style={{
+                  <button onClick={() => { setNoteDraft(sectionNotes[organizeKey] || ""); setEditingNoteFor(organizeKey); }} style={{
                     background: "none", border: "none", cursor: "pointer", flexShrink: 0, padding: 4,
                     color: T.inkSoft, display: "flex",
                   }} title="Edit this note">
@@ -1501,7 +1552,14 @@ export default function ModelingLibraryApp() {
                   </button>
                 )}
               </div>
-            )}
+            ) : isAdmin ? (
+              <button onClick={() => { setNoteDraft(""); setEditingNoteFor(organizeKey); }} style={{
+                display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer",
+                color: T.accentTo, fontSize: 12.5, fontWeight: 700, padding: 0, fontFamily: "'Plus Jakarta Sans', sans-serif",
+              }}>
+                <Plus size={13} /> Add a note for {organizeMode.label}
+              </button>
+            ) : null}
           </div>
         )}
 

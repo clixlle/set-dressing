@@ -112,7 +112,7 @@ create table if not exists app_settings (
 );
 
 insert into app_settings (key, value) values (
-  'kitchen_banner',
+  'note_kitchen',
   'All kitchen pieces must be designed as add-ons to the main base module. Variations such as cabinet doors, handles, countertops, shelves, and decorative elements should fit the base seamlessly without requiring modifications. All modules must share consistent dimensions, alignment, and connection points to ensure any combination of pieces can be mixed and matched together cleanly.'
 ) on conflict (key) do nothing;
 
