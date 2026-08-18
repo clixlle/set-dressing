@@ -482,31 +482,79 @@ function downloadPhoto(dataUrl, name) {
   document.body.removeChild(a);
 }
 
-/* A larger photo preview with Change / Delete / Download actions, used in the modals. */
+/* Converts any image blob (JPEG, WEBP, whatever the clipboard gives us) to a PNG data URL. */
+function blobToPngDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
+}
+
+function extractPastedImage(clipboardData) {
+  const items = clipboardData?.items;
+  if (!items) return null;
+  for (const item of items) {
+    if (item.type && item.type.startsWith("image/")) {
+      return item.getAsFile();
+    }
+  }
+  return null;
+}
+
+/* A larger photo preview with Change / Delete / Download actions, used in the modals.
+   Supports pasting an image directly (Ctrl/Cmd+V) — always saved as a PNG. */
 function PhotoField({ src, onUpload, onDelete, name }) {
   const inputRef = useRef(null);
+  const boxRef = useRef(null);
+
+  const handlePaste = async (e) => {
+    const file = extractPastedImage(e.clipboardData);
+    if (!file) return;
+    e.preventDefault();
+    const pngDataUrl = await blobToPngDataUrl(file);
+    onUpload(pngDataUrl);
+  };
+
   return (
     <div>
       <div
+        ref={boxRef}
+        tabIndex={0}
         onClick={() => inputRef.current?.click()}
+        onPaste={handlePaste}
         style={{
           width: "100%", aspectRatio: "1 / 1", maxHeight: 280, borderRadius: 18, overflow: "hidden",
           background: src ? "#fff" : T.field, display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: "pointer", marginBottom: 12, position: "relative",
+          cursor: "pointer", marginBottom: 12, position: "relative", outline: "none",
         }}
       >
         {src ? (
           <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, color: T.inkSoft }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, color: T.inkSoft, textAlign: "center", padding: 12 }}>
             <Camera size={40} strokeWidth={1.5} />
             <span style={{ fontSize: 13, fontWeight: 600 }}>Click to add a photo</span>
+            <span style={{ fontSize: 11.5 }}>or click here and paste (Ctrl/Cmd+V)</span>
           </div>
         )}
         <input ref={inputRef} type="file" accept="image/*" style={{ display: "none" }}
           onChange={async (e) => {
             const file = e.target.files?.[0];
-            if (file) onUpload(await fileToDataUrl(file));
+            if (file) {
+              const pngDataUrl = await blobToPngDataUrl(file);
+              onUpload(pngDataUrl);
+            }
             e.target.value = "";
           }} />
       </div>
@@ -621,6 +669,17 @@ function ItemModal({ item, onClose, onSave, onDelete }) {
           </div>
         </div>
 
+        <div style={{ marginBottom: 18 }}>
+          <span style={labelStyle}>Description</span>
+          <textarea
+            value={draft.description || ""}
+            onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+            placeholder="Notes, specs, or anything future you (or a teammate) should know about this piece…"
+            rows={3}
+            style={{ ...inputStyle, resize: "vertical", fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+          />
+        </div>
+
         <div style={{ marginBottom: 22 }}>
           <span style={labelStyle}>Status</span>
           <StatusPicker status={draft.status} onChange={(s) => setDraft({ ...draft, status: s })} width={200} />
@@ -642,7 +701,7 @@ function ItemModal({ item, onClose, onSave, onDelete }) {
 
 /* ============================== ADD ITEM MODAL ============================== */
 function AddItemModal({ onClose, onCreate }) {
-  const [draft, setDraft] = useState({ name: "", type: TYPE_NAMES[0], typeGroup: CATEGORY_TYPES[0].group, room: ROOMS[0], style: STYLE_NAMES[0], status: "not-started", photo: null });
+  const [draft, setDraft] = useState({ name: "", type: TYPE_NAMES[0], typeGroup: CATEGORY_TYPES[0].group, room: ROOMS[0], style: STYLE_NAMES[0], status: "not-started", photo: null, description: "" });
   const inputStyle = { width: "100%", border: "none", borderRadius: 12, padding: "11px 12px", fontSize: 14, fontFamily: "'Plus Jakarta Sans', sans-serif", background: T.field, color: T.ink, boxSizing: "border-box" };
   const labelStyle = { fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: T.inkSoft, marginBottom: 7, display: "block" };
 
@@ -694,6 +753,17 @@ function AddItemModal({ onClose, onCreate }) {
               {ROOMS.map((r) => <option key={r}>{r}</option>)}
             </select>
           </div>
+        </div>
+
+        <div style={{ marginBottom: 22 }}>
+          <span style={labelStyle}>Description</span>
+          <textarea
+            value={draft.description || ""}
+            onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+            placeholder="Notes, specs, or anything future you (or a teammate) should know about this piece…"
+            rows={3}
+            style={{ ...inputStyle, resize: "vertical", fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+          />
         </div>
 
         <div className="sd-modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
@@ -1074,6 +1144,18 @@ export default function ModelingLibraryApp() {
             </button>
           )}
         </div>
+
+        {organizeKey === "kitchen" && (
+          <div style={{
+            background: T.cardAlt, borderLeft: `3px solid ${T.accentTo}`, borderRadius: 12,
+            padding: "14px 16px", marginBottom: 16, fontSize: 13, lineHeight: 1.55, color: T.inkSoft,
+          }}>
+            <strong style={{ color: T.ink }}>All kitchen pieces must be designed as add-ons to the main base module.</strong> Variations
+            such as cabinet doors, handles, countertops, shelves, and decorative elements should fit the base seamlessly
+            without requiring modifications. All modules must share consistent dimensions, alignment, and connection
+            points to ensure any combination of pieces can be mixed and matched together cleanly.
+          </div>
+        )}
 
         <div style={{ fontSize: 13, color: T.inkSoft, marginBottom: 14, fontWeight: 600 }}>{filtered.length} item{filtered.length !== 1 ? "s" : ""}</div>
 

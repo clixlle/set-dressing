@@ -9,6 +9,7 @@ create table if not exists items (
   style text,
   status text not null default 'not-started',
   photo text,
+  description text default '',
   created_at bigint,
   updated_at bigint
 );

@@ -28,6 +28,7 @@ export function rowToItem(row) {
     style: row.style,
     status: row.status,
     photo: row.photo,
+    description: row.description || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -43,6 +44,7 @@ export function itemToRow(item) {
     style: item.style,
     status: item.status,
     photo: item.photo,
+    description: item.description || "",
     created_at: item.createdAt,
     updated_at: item.updatedAt,
   };
