@@ -73,7 +73,6 @@ const CATEGORY_TYPES = [
   { name: "Dining Tables", singular: "Dining Table", room: "Dining Room", group: "Furniture" },
   { name: "Dining Chairs", singular: "Dining Chair", room: "Dining Room", group: "Furniture" },
   { name: "Bar Carts", singular: "Bar Cart", room: "Dining Room", group: "Furniture" },
-  { name: "Kitchen Islands", singular: "Kitchen Island", room: "Kitchen", group: "Furniture" },
   { name: "Bar Stools", singular: "Bar Stool", room: "Kitchen", group: "Furniture" },
   { name: "Bookcases", singular: "Bookcase", room: "Office", group: "Furniture" },
   { name: "TV Stands", singular: "TV Stand", room: "Living Room", group: "Furniture" },
@@ -718,7 +717,7 @@ const ORGANIZE_OPTIONS = [
 
 function SortMenu({ organizeKey, specificValue, onPick }) {
   const [open, setOpen] = useState(false);
-  const [expanded, setExpanded] = useState(organizeKey);
+  const [expanded, setExpanded] = useState("");
   const ref = useRef(null);
 
   useEffect(() => {
@@ -734,7 +733,7 @@ function SortMenu({ organizeKey, specificValue, onPick }) {
     <div ref={ref} className="sd-sortmenu" style={{ position: "relative" }}>
       <button
         className="sd-sortmenu-btn"
-        onClick={() => { setOpen((v) => !v); setExpanded(organizeKey); }}
+        onClick={() => { setOpen((v) => !v); setExpanded(""); }}
         style={{
           display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 999,
           border: "none", background: T.card, fontSize: 13.5, color: T.ink, cursor: "pointer",
@@ -814,6 +813,8 @@ export default function ModelingLibraryApp() {
   const [expanded, setExpanded] = useState(new Set());
 
   // Initial load from Supabase — if the table is empty (first run ever), seed it once.
+  // If it already has data, reconcile it: remove retired item types, and backfill any
+  // whole category that's missing (e.g. a batch insert that failed partway through).
   useEffect(() => {
     if (supabaseConfigError) {
       setSyncError(supabaseConfigError);
@@ -823,21 +824,40 @@ export default function ModelingLibraryApp() {
     }
     (async () => {
       try {
-        const { data, error } = await supabase.from("items").select("*");
+        let { data, error } = await supabase.from("items").select("*");
         if (error) throw error;
 
-        if (data && data.length > 0) {
-          setItems(data.map(rowToItem));
-        } else {
+        if (!data || data.length === 0) {
           const seed = buildSeedItems();
           setItems(seed);
-          // Insert in chunks — Supabase/Postgres can choke on one enormous insert.
           const rows = seed.map(itemToRow);
           const chunkSize = 500;
           for (let i = 0; i < rows.length; i += chunkSize) {
             const { error: insertError } = await supabase.from("items").insert(rows.slice(i, i + chunkSize));
             if (insertError) throw insertError;
           }
+        } else {
+          // Remove retired item types that may already exist from an earlier seed.
+          const { error: delError } = await supabase.from("items").delete().eq("type", "Kitchen Island");
+          if (delError) console.error("Cleanup delete failed:", delError);
+          data = data.filter((row) => row.type !== "Kitchen Island");
+
+          // Backfill any category that's entirely missing (e.g. an insert batch that
+          // failed partway through when the table was first seeded).
+          const seed = buildSeedItems();
+          const presentTypes = new Set(data.map((row) => row.type));
+          const missing = seed.filter((item) => !presentTypes.has(item.type));
+          if (missing.length > 0) {
+            const rows = missing.map(itemToRow);
+            const chunkSize = 500;
+            for (let i = 0; i < rows.length; i += chunkSize) {
+              const { error: insertError } = await supabase.from("items").insert(rows.slice(i, i + chunkSize));
+              if (insertError) console.error("Backfill insert failed:", insertError);
+            }
+            data = [...data, ...missing.map(itemToRow)];
+          }
+
+          setItems(data.map(rowToItem));
         }
       } catch (e) {
         console.error("Supabase load failed:", e);
