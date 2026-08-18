@@ -1289,13 +1289,27 @@ export default function ModelingLibraryApp() {
     const newType = { id: uid("cat"), name: name.trim(), group_name: groupName, default_room: groupName === "Kitchen" ? "Kitchen" : "Living Room", created_at: Date.now() };
     setCustomTypes((prev) => [...prev, newType]);
     const { error } = await supabase.from("custom_types").insert([newType]);
-    if (error) console.error("Add category failed:", error);
+    if (error) {
+      console.error("Add category failed:", error);
+      setCustomTypes((prev) => prev.filter((c) => c.id !== newType.id));
+      setSyncError("That category didn't save — please try again.");
+    }
   }, []);
 
   const saveNote = useCallback(async (sectionKey, text) => {
-    setSectionNotes((prev) => ({ ...prev, [sectionKey]: text }));
+    let previousValue;
+    setSectionNotes((prev) => {
+      previousValue = prev[sectionKey];
+      return { ...prev, [sectionKey]: text };
+    });
     const { error } = await supabase.from("app_settings").upsert({ key: `note_${sectionKey}`, value: text });
-    if (error) console.error("Save note failed:", error);
+    if (error) {
+      console.error("Save note failed:", error);
+      setSectionNotes((prev) => ({ ...prev, [sectionKey]: previousValue }));
+      setSyncError("That note didn't save — please try again.");
+      return false;
+    }
+    return true;
   }, []);
 
   const setStatus = useCallback(async (id, status) => {
@@ -1568,7 +1582,7 @@ export default function ModelingLibraryApp() {
                   }}
                 />
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => { saveNote(organizeKey, noteDraft); setEditingNoteFor(""); }} style={{
+                  <button onClick={async () => { const ok = await saveNote(organizeKey, noteDraft); if (ok) setEditingNoteFor(""); }} style={{
                     background: T.accentTo, color: "#1A0F0A", border: "none", borderRadius: 999, padding: "7px 14px",
                     fontSize: 12, fontWeight: 800, cursor: "pointer",
                   }}>Save note</button>

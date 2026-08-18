@@ -122,6 +122,10 @@ alter publication supabase_realtime add table app_settings;
 create policy "Signed-in users can read settings"
   on app_settings for select to authenticated using (true);
 
+create policy "Admin can insert settings"
+  on app_settings for insert to authenticated
+  with check (auth.jwt() ->> 'email' = 'realview@set-dressing.internal');
+
 create policy "Admin can update settings"
   on app_settings for update to authenticated
   using (auth.jwt() ->> 'email' = 'realview@set-dressing.internal')
