@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
-  Search, Plus, X, ChevronDown, ChevronRight, Trash2, Camera, Check, Clock, Circle, Boxes, Loader2, Download, Pencil
+  Search, Plus, X, ChevronDown, ChevronRight, Trash2, Camera, Check, Clock, Circle, Boxes, Loader2, Download, Pencil, ClipboardPaste
 } from "lucide-react";
 import { supabase, rowToItem, itemToRow, supabaseConfigError } from "./supabaseClient";
 
@@ -513,10 +513,13 @@ function extractPastedImage(clipboardData) {
 }
 
 /* A larger photo preview with Change / Delete / Download actions, used in the modals.
-   Supports pasting an image directly (Ctrl/Cmd+V) — always saved as a PNG. */
+   Supports pasting an image (Ctrl/Cmd+V on desktop, or the Paste button on any
+   device, since mobile browsers don't offer OS paste on a plain div) — always
+   saved as a PNG. */
 function PhotoField({ src, onUpload, onDelete, name }) {
   const inputRef = useRef(null);
   const boxRef = useRef(null);
+  const [pasteError, setPasteError] = useState("");
 
   const handlePaste = async (e) => {
     const file = extractPastedImage(e.clipboardData);
@@ -524,6 +527,29 @@ function PhotoField({ src, onUpload, onDelete, name }) {
     e.preventDefault();
     const pngDataUrl = await blobToPngDataUrl(file);
     onUpload(pngDataUrl);
+  };
+
+  const pasteFromClipboard = async () => {
+    setPasteError("");
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.read) {
+        setPasteError("This browser doesn't support paste-from-clipboard here — use \"Add photo\" instead.");
+        return;
+      }
+      const clipboardItems = await navigator.clipboard.read();
+      for (const item of clipboardItems) {
+        const imageType = item.types.find((t) => t.startsWith("image/"));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          const pngDataUrl = await blobToPngDataUrl(blob);
+          onUpload(pngDataUrl);
+          return;
+        }
+      }
+      setPasteError("No image found on your clipboard — copy an image first, then try again.");
+    } catch (err) {
+      setPasteError("Couldn't read the clipboard — your browser may need permission, or use \"Add photo\" instead.");
+    }
   };
 
   return (
@@ -545,7 +571,6 @@ function PhotoField({ src, onUpload, onDelete, name }) {
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, color: T.inkSoft, textAlign: "center", padding: 12 }}>
             <Camera size={40} strokeWidth={1.5} />
             <span style={{ fontSize: 13, fontWeight: 600 }}>Click to add a photo</span>
-            <span style={{ fontSize: 11.5 }}>or click here and paste (Ctrl/Cmd+V)</span>
           </div>
         )}
         <input ref={inputRef} type="file" accept="image/*" style={{ display: "none" }}
@@ -565,6 +590,12 @@ function PhotoField({ src, onUpload, onDelete, name }) {
         }}>
           <Pencil size={13} /> {src ? "Change" : "Add"} photo
         </button>
+        <button onClick={pasteFromClipboard} style={{
+          display: "flex", alignItems: "center", gap: 6, background: T.cardAlt, color: T.ink, border: "none",
+          borderRadius: 999, padding: "8px 14px", cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+        }}>
+          <ClipboardPaste size={13} /> Paste photo
+        </button>
         {src && (
           <>
             <button onClick={() => downloadPhoto(src, name)} style={{
@@ -582,6 +613,9 @@ function PhotoField({ src, onUpload, onDelete, name }) {
           </>
         )}
       </div>
+      {pasteError && (
+        <div style={{ fontSize: 12, color: T.danger, marginTop: 8, fontWeight: 600 }}>{pasteError}</div>
+      )}
     </div>
   );
 }
@@ -1089,8 +1123,11 @@ export default function ModelingLibraryApp() {
           .sd-row-name { font-size: 15.5px !important; }
           .sd-row-status { width: 100% !important; margin-left: 0 !important; }
           .sd-modal { padding: 18px !important; max-width: 100% !important; border-radius: 20px !important; }
-          .sd-modal-overlay { padding: 0 !important; align-items: stretch !important; }
-          .sd-modal-overlay > div { border-radius: 0 !important; min-height: 100vh; min-height: 100dvh; margin: 0 !important; }
+          .sd-modal-overlay {
+            padding: 0 !important; align-items: flex-start !important;
+            -webkit-overflow-scrolling: touch !important;
+          }
+          .sd-modal-overlay > div { border-radius: 0 !important; min-height: 100% !important; margin: 0 !important; }
           .sd-modal-actions { flex-wrap: wrap !important; }
           .sd-modal-actions > div { width: 100% !important; justify-content: stretch !important; }
           .sd-modal-actions button { flex: 1 1 auto !important; }
