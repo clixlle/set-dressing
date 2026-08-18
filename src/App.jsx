@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Search, Plus, X, ChevronDown, ChevronRight, Trash2, Camera, Check, Clock, Circle, Boxes, Loader2
 } from "lucide-react";
@@ -473,7 +473,7 @@ function Photo({ src, onUpload, size = 84, editable = true, className }) {
 }
 
 /* ============================== ITEM ROW ============================== */
-function ItemRow({ item, onOpen, onStatusChange }) {
+const ItemRow = React.memo(function ItemRow({ item, onOpen, onStatusChange }) {
   const [statusOpen, setStatusOpen] = useState(false);
   return (
     <div
@@ -503,7 +503,7 @@ function ItemRow({ item, onOpen, onStatusChange }) {
       <StatusPicker className="sd-row-status" status={item.status} onChange={(s) => onStatusChange(item.id, s)} onOpenChange={setStatusOpen} />
     </div>
   );
-}
+});
 
 /* ============================== ITEM MODAL (edit) ============================== */
 function ItemModal({ item, onClose, onSave, onDelete }) {
@@ -797,34 +797,34 @@ export default function ModelingLibraryApp() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  const setStatus = async (id, status) => {
+  const setStatus = useCallback(async (id, status) => {
     const updatedAt = Date.now();
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, status, updatedAt } : i)));
     const { error } = await supabase.from("items").update({ status, updated_at: updatedAt }).eq("id", id);
     if (error) console.error("Status update failed:", error);
-  };
+  }, []);
 
-  const saveItem = async (updated) => {
+  const saveItem = useCallback(async (updated) => {
     const withTimestamp = { ...updated, updatedAt: Date.now() };
     setItems((prev) => prev.map((i) => (i.id === updated.id ? withTimestamp : i)));
     setOpenItemId(null);
     const { error } = await supabase.from("items").update(itemToRow(withTimestamp)).eq("id", updated.id);
     if (error) console.error("Save failed:", error);
-  };
+  }, []);
 
-  const deleteItem = async (id) => {
+  const deleteItem = useCallback(async (id) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
     setOpenItemId(null);
     const { error } = await supabase.from("items").delete().eq("id", id);
     if (error) console.error("Delete failed:", error);
-  };
+  }, []);
 
-  const createItem = async (item) => {
+  const createItem = useCallback(async (item) => {
     setItems((prev) => [item, ...prev]);
     setShowAdd(false);
     const { error } = await supabase.from("items").insert([itemToRow(item)]);
     if (error) console.error("Create failed:", error);
-  };
+  }, []);
 
   const organizeMode = ORGANIZE_OPTIONS.find((o) => o.key === organizeKey);
 
