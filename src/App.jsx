@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Search, Plus, X, ChevronDown, ChevronRight, Trash2, Camera, Check, Clock, Circle, Boxes, Loader2
 } from "lucide-react";
-import { supabase, rowToItem, itemToRow } from "./supabaseClient";
+import { supabase, rowToItem, itemToRow, supabaseConfigError } from "./supabaseClient";
 
 /* ============================== DESIGN TOKENS ============================== */
 const T = {
@@ -744,6 +744,12 @@ export default function ModelingLibraryApp() {
 
   // Initial load from Supabase — if the table is empty (first run ever), seed it once.
   useEffect(() => {
+    if (supabaseConfigError) {
+      setSyncError(supabaseConfigError);
+      setItems(buildSeedItems());
+      setLoaded(true);
+      return;
+    }
     (async () => {
       try {
         const { data, error } = await supabase.from("items").select("*");
@@ -773,6 +779,7 @@ export default function ModelingLibraryApp() {
 
   // Live sync — when anyone on any account changes an item, everyone else sees it immediately.
   useEffect(() => {
+    if (supabaseConfigError) return;
     const channel = supabase
       .channel("items-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "items" }, (payload) => {

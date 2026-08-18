@@ -3,15 +3,18 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  // eslint-disable-next-line no-console
-  console.warn(
-    "Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. " +
-    "Add them as environment variables (locally in a .env file, and in your Vercel project settings)."
-  );
-}
+export const supabaseConfigError =
+  !supabaseUrl || !supabaseAnonKey
+    ? "Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Add them in your Vercel project's Environment Variables (Settings → Environment Variables), then redeploy."
+    : null;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// A placeholder URL/key that createClient() will accept without throwing,
+// used only when real env vars aren't present — so the app can still render
+// and show a clear on-page message instead of a blank white screen.
+export const supabase = createClient(
+  supabaseUrl || "https://placeholder.supabase.co",
+  supabaseAnonKey || "placeholder-anon-key"
+);
 
 /* ---------- Row <-> app item mapping ----------
    The database uses snake_case columns; the app uses camelCase fields. */
