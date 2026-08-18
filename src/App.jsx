@@ -195,6 +195,7 @@ const KITCHEN_WORKTOP_EDGE_PROFILES = [
   "Double Bullnose Edge",
 ];
 const KITCHEN_MODULE_TYPES = ["Door Profile", "Handle", "Toe Kick", "Worktop Thickness", "Worktop Edge Profile"];
+const DEFAULT_KITCHEN_BANNER = "All kitchen pieces must be designed as add-ons to the main base module. Variations such as cabinet doors, handles, countertops, shelves, and decorative elements should fit the base seamlessly without requiring modifications. All modules must share consistent dimensions, alignment, and connection points to ensure any combination of pieces can be mixed and matched together cleanly.";
 
 const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Plant", "Miscellaneous", ...KITCHEN_MODULE_TYPES];
 const FURNITURE_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Furniture").map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name)];
@@ -209,13 +210,15 @@ function uid(prefix) {
   return prefix + "_" + Math.random().toString(36).slice(2, 10);
 }
 
-function typeGroupFor(typeName) {
+function typeGroupFor(typeName, customTypes = []) {
   const cat = CATEGORY_TYPES.find((c) => c.singular === typeName);
   if (cat) return cat.group;
   if (KIDS_FURNITURE.some((k) => k.name === typeName)) return "Furniture";
   if (typeName === "Plant") return "Decor";
   if (typeName === "Miscellaneous") return "Misc";
   if (KITCHEN_MODULE_TYPES.includes(typeName)) return "Kitchen";
+  const custom = customTypes.find((c) => c.name === typeName);
+  if (custom) return custom.group_name;
   return "Furniture";
 }
 
@@ -663,7 +666,47 @@ function ReadOnlyField({ label, value }) {
   );
 }
 
-function ItemModal({ item, isAdmin, onClose, onSave, onDelete }) {
+/* Full-size, click-to-open photo view with a Download button — used for the
+   read-only (modeler) view, where viewing/downloading is allowed but editing isn't. */
+function ViewablePhoto({ src, name }) {
+  const [open, setOpen] = useState(false);
+  if (!src) return null;
+  return (
+    <>
+      <div style={{ marginBottom: 18 }}>
+        <img
+          src={src} alt="" onClick={() => setOpen(true)}
+          style={{ width: "100%", aspectRatio: "1 / 1", maxHeight: 280, objectFit: "cover", borderRadius: 18, cursor: "zoom-in" }}
+        />
+        <button onClick={() => downloadPhoto(src, name)} style={{
+          display: "flex", alignItems: "center", gap: 6, background: T.cardAlt, color: T.ink, border: "none",
+          borderRadius: 999, padding: "8px 14px", cursor: "pointer", fontSize: 12.5, fontWeight: 700, marginTop: 10,
+        }}>
+          <Download size={13} /> Download photo
+        </button>
+      </div>
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          style={{
+            position: "fixed", inset: 0, background: "rgba(4,4,8,0.92)", zIndex: 80,
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 24, cursor: "zoom-out",
+          }}
+        >
+          <button onClick={() => setOpen(false)} style={{
+            position: "absolute", top: 20, right: 20, background: "rgba(255,255,255,0.1)", border: "none",
+            borderRadius: "50%", width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+          }}>
+            <X size={20} color="#fff" />
+          </button>
+          <img src={src} alt="" style={{ maxWidth: "92vw", maxHeight: "88vh", objectFit: "contain", borderRadius: 12 }} onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
+    </>
+  );
+}
+
+function ItemModal({ item, isAdmin, onClose, onSave, onDelete, furnitureTypes, decorTypes, kitchenTypes, customTypes }) {
   const [draft, setDraft] = useState(item);
   useEffect(() => setDraft(item), [item]);
   const inputStyle = { width: "100%", border: "none", borderRadius: 12, padding: "11px 12px", fontSize: 14, fontFamily: "'Plus Jakarta Sans', sans-serif", background: T.field, color: T.ink, boxSizing: "border-box" };
@@ -693,11 +736,11 @@ function ItemModal({ item, isAdmin, onClose, onSave, onDelete }) {
               <div>
                 <span style={labelStyle}>Object type</span>
                 <select value={draft.type} onChange={(e) => {
-                  setDraft({ ...draft, type: e.target.value, typeGroup: typeGroupFor(e.target.value) });
+                  setDraft({ ...draft, type: e.target.value, typeGroup: typeGroupFor(e.target.value, customTypes) });
                 }} style={inputStyle}>
-                  <optgroup label="Furniture">{FURNITURE_TYPES.map((t) => <option key={t}>{t}</option>)}</optgroup>
-                  <optgroup label="Decor">{DECOR_TYPES.map((t) => <option key={t}>{t}</option>)}</optgroup>
-                  <optgroup label="Kitchen System">{KITCHEN_TYPES.map((t) => <option key={t}>{t}</option>)}</optgroup>
+                  <optgroup label="Furniture">{furnitureTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
+                  <optgroup label="Decor">{decorTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
+                  <optgroup label="Kitchen System">{kitchenTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
                 </select>
               </div>
               <div>
@@ -727,11 +770,7 @@ function ItemModal({ item, isAdmin, onClose, onSave, onDelete }) {
           </>
         ) : (
           <>
-            {draft.photo && (
-              <div style={{ marginBottom: 18 }}>
-                <img src={draft.photo} alt="" style={{ width: "100%", aspectRatio: "1 / 1", maxHeight: 280, objectFit: "cover", borderRadius: 18 }} />
-              </div>
-            )}
+            <ViewablePhoto src={draft.photo} name={draft.name} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
               <ReadOnlyField label="Object type" value={draft.type} />
               <ReadOnlyField label="Style" value={draft.style} />
@@ -765,7 +804,7 @@ function ItemModal({ item, isAdmin, onClose, onSave, onDelete }) {
 }
 
 /* ============================== ADD ITEM MODAL ============================== */
-function AddItemModal({ onClose, onCreate }) {
+function AddItemModal({ onClose, onCreate, furnitureTypes, decorTypes, kitchenTypes, customTypes }) {
   const [draft, setDraft] = useState({ name: "", type: TYPE_NAMES[0], typeGroup: CATEGORY_TYPES[0].group, room: ROOMS[0], style: STYLE_NAMES[0], status: "not-started", photo: null, description: "" });
   const inputStyle = { width: "100%", border: "none", borderRadius: 12, padding: "11px 12px", fontSize: 14, fontFamily: "'Plus Jakarta Sans', sans-serif", background: T.field, color: T.ink, boxSizing: "border-box" };
   const labelStyle = { fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: T.inkSoft, marginBottom: 7, display: "block" };
@@ -799,11 +838,11 @@ function AddItemModal({ onClose, onCreate }) {
           <div>
             <span style={labelStyle}>Object type</span>
             <select value={draft.type} onChange={(e) => {
-              setDraft({ ...draft, type: e.target.value, typeGroup: typeGroupFor(e.target.value) });
+              setDraft({ ...draft, type: e.target.value, typeGroup: typeGroupFor(e.target.value, customTypes) });
             }} style={inputStyle}>
-              <optgroup label="Furniture">{FURNITURE_TYPES.map((t) => <option key={t}>{t}</option>)}</optgroup>
-              <optgroup label="Decor">{DECOR_TYPES.map((t) => <option key={t}>{t}</option>)}</optgroup>
-              <optgroup label="Kitchen System">{KITCHEN_TYPES.map((t) => <option key={t}>{t}</option>)}</optgroup>
+              <optgroup label="Furniture">{furnitureTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
+              <optgroup label="Decor">{decorTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
+              <optgroup label="Kitchen System">{kitchenTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
             </select>
           </div>
           <div>
@@ -841,18 +880,11 @@ function AddItemModal({ onClose, onCreate }) {
 }
 
 /* ============================== ROOT APP ============================== */
-const ORGANIZE_OPTIONS = [
-  { key: "all", label: "All Items", values: TYPE_NAMES, field: "type" },
-  { key: "furniture", label: "Furniture", values: FURNITURE_TYPES, field: "type" },
-  { key: "decor", label: "Decor", values: DECOR_TYPES, field: "type" },
-  { key: "kitchen", label: "Kitchen System", values: KITCHEN_TYPES, field: "type" },
-  { key: "room", label: "Room", values: ROOMS, field: "room" },
-  { key: "style", label: "Style", values: STYLE_NAMES, field: "style" },
-];
-
-function SortMenu({ organizeKey, specificValue, onPick }) {
+function SortMenu({ organizeKey, specificValue, onPick, organizeOptions, isAdmin, onAddCategory }) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState("");
+  const [addingTo, setAddingTo] = useState("");
+  const [newCategoryName, setNewCategoryName] = useState("");
   const ref = useRef(null);
 
   useEffect(() => {
@@ -861,14 +893,22 @@ function SortMenu({ organizeKey, specificValue, onPick }) {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  const activeMode = ORGANIZE_OPTIONS.find((o) => o.key === organizeKey);
+  const activeMode = organizeOptions.find((o) => o.key === organizeKey) || organizeOptions[0];
   const currentLabel = specificValue ? specificValue : `All by ${activeMode.label}`;
+
+  const submitNewCategory = (groupKey) => {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    onAddCategory(groupKey, name);
+    setNewCategoryName("");
+    setAddingTo("");
+  };
 
   return (
     <div ref={ref} className="sd-sortmenu" style={{ position: "relative" }}>
       <button
         className="sd-sortmenu-btn"
-        onClick={() => { setOpen((v) => !v); setExpanded(""); }}
+        onClick={() => { setOpen((v) => !v); setExpanded(""); setAddingTo(""); }}
         style={{
           display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 999,
           border: "none", background: T.card, fontSize: 13.5, color: T.ink, cursor: "pointer",
@@ -884,11 +924,11 @@ function SortMenu({ organizeKey, specificValue, onPick }) {
       {open && (
         <div className="sd-sortmenu-panel" style={{
           position: "absolute", top: "calc(100% + 8px)", left: 0, zIndex: 60,
-          width: "min(280px, 82vw)",
+          width: "min(300px, 82vw)",
           background: T.cardAlt, borderRadius: 18, boxShadow: "0 16px 40px rgba(0,0,0,0.5)",
-          padding: 8, maxHeight: 360, overflowY: "auto",
+          padding: 8, maxHeight: 400, overflowY: "auto",
         }}>
-          {ORGANIZE_OPTIONS.map((o) => (
+          {organizeOptions.map((o) => (
             <div key={o.key}>
               <div style={{ display: "flex", alignItems: "stretch" }}>
                 <button
@@ -926,6 +966,38 @@ function SortMenu({ organizeKey, specificValue, onPick }) {
                       {v}
                     </button>
                   ))}
+                  {isAdmin && onAddCategory && ["furniture", "decor", "kitchen"].includes(o.key) && (
+                    addingTo === o.key ? (
+                      <div style={{ display: "flex", gap: 6, padding: "6px 4px" }}>
+                        <input
+                          autoFocus
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") submitNewCategory(o.key); if (e.key === "Escape") setAddingTo(""); }}
+                          placeholder="New category name"
+                          style={{
+                            flex: 1, minWidth: 0, border: "none", borderRadius: 8, padding: "7px 9px", fontSize: 12.5,
+                            background: T.field, color: T.ink, fontFamily: "'Plus Jakarta Sans', sans-serif",
+                          }}
+                        />
+                        <button onClick={() => submitNewCategory(o.key)} style={{
+                          background: T.accentTo, color: "#1A0F0A", border: "none", borderRadius: 8, padding: "0 10px",
+                          fontSize: 12, fontWeight: 800, cursor: "pointer", flexShrink: 0,
+                        }}>Add</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setAddingTo(o.key); setNewCategoryName(""); }}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left", padding: "8px 12px",
+                          fontSize: 12.5, background: "none", border: "none", borderRadius: 10, cursor: "pointer",
+                          color: T.accentTo, fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700,
+                        }}
+                      >
+                        <Plus size={12} /> New category
+                      </button>
+                    )
+                  )}
                 </div>
               )}
             </div>
@@ -1018,6 +1090,10 @@ export default function ModelingLibraryApp() {
   const [openItemId, setOpenItemId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
+  const [customTypes, setCustomTypes] = useState([]);
+  const [kitchenBanner, setKitchenBanner] = useState(DEFAULT_KITCHEN_BANNER);
+  const [editingBanner, setEditingBanner] = useState(false);
+  const [bannerDraft, setBannerDraft] = useState("");
 
   // Auth: check for an existing session, and keep it in sync if it changes.
   useEffect(() => {
@@ -1112,6 +1188,52 @@ export default function ModelingLibraryApp() {
     return () => { supabase.removeChannel(channel); };
   }, [session]);
 
+  // Load admin-added categories and the editable Kitchen System note, and keep
+  // them synced live too.
+  useEffect(() => {
+    if (supabaseConfigError || !session) return;
+    (async () => {
+      const { data: types } = await supabase.from("custom_types").select("*");
+      if (types) setCustomTypes(types);
+      const { data: settings } = await supabase.from("app_settings").select("*").eq("key", "kitchen_banner").maybeSingle();
+      if (settings && settings.value) setKitchenBanner(settings.value);
+    })();
+
+    const typesChannel = supabase
+      .channel("custom-types-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "custom_types" }, (payload) => {
+        setCustomTypes((prev) => {
+          if (payload.eventType === "DELETE") return prev.filter((c) => c.id !== payload.old.id);
+          const exists = prev.some((c) => c.id === payload.new.id);
+          return exists ? prev.map((c) => (c.id === payload.new.id ? payload.new : c)) : [...prev, payload.new];
+        });
+      })
+      .subscribe();
+
+    const settingsChannel = supabase
+      .channel("app-settings-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, (payload) => {
+        if (payload.new && payload.new.key === "kitchen_banner") setKitchenBanner(payload.new.value || DEFAULT_KITCHEN_BANNER);
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(typesChannel); supabase.removeChannel(settingsChannel); };
+  }, [session]);
+
+  const addCategory = useCallback(async (groupKey, name) => {
+    const groupName = groupKey === "furniture" ? "Furniture" : groupKey === "decor" ? "Decor" : "Kitchen";
+    const newType = { id: uid("cat"), name: name.trim(), group_name: groupName, default_room: groupName === "Kitchen" ? "Kitchen" : "Living Room", created_at: Date.now() };
+    setCustomTypes((prev) => [...prev, newType]);
+    const { error } = await supabase.from("custom_types").insert([newType]);
+    if (error) console.error("Add category failed:", error);
+  }, []);
+
+  const saveBanner = useCallback(async (text) => {
+    setKitchenBanner(text);
+    const { error } = await supabase.from("app_settings").update({ value: text }).eq("key", "kitchen_banner");
+    if (error) console.error("Save banner failed:", error);
+  }, []);
+
   const setStatus = useCallback(async (id, status) => {
     const updatedAt = Date.now();
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, status, updatedAt } : i)));
@@ -1141,7 +1263,21 @@ export default function ModelingLibraryApp() {
     if (error) console.error("Create failed:", error);
   }, []);
 
-  const organizeMode = ORGANIZE_OPTIONS.find((o) => o.key === organizeKey);
+  const furnitureTypes = useMemo(() => [...FURNITURE_TYPES, ...customTypes.filter((c) => c.group_name === "Furniture").map((c) => c.name)], [customTypes]);
+  const decorTypes = useMemo(() => [...DECOR_TYPES, ...customTypes.filter((c) => c.group_name === "Decor").map((c) => c.name)], [customTypes]);
+  const kitchenTypes = useMemo(() => [...KITCHEN_TYPES, ...customTypes.filter((c) => c.group_name === "Kitchen").map((c) => c.name)], [customTypes]);
+  const allTypeNames = useMemo(() => [...TYPE_NAMES, ...customTypes.map((c) => c.name)], [customTypes]);
+
+  const organizeOptions = useMemo(() => [
+    { key: "all", label: "All Items", values: allTypeNames, field: "type" },
+    { key: "furniture", label: "Furniture", values: furnitureTypes, field: "type" },
+    { key: "decor", label: "Decor", values: decorTypes, field: "type" },
+    { key: "kitchen", label: "Kitchen System", values: kitchenTypes, field: "type" },
+    { key: "room", label: "Room", values: ROOMS, field: "room" },
+    { key: "style", label: "Style", values: STYLE_NAMES, field: "style" },
+  ], [allTypeNames, furnitureTypes, decorTypes, kitchenTypes]);
+
+  const organizeMode = organizeOptions.find((o) => o.key === organizeKey);
 
   const filtered = useMemo(() => {
     if (!items) return [];
@@ -1315,7 +1451,8 @@ export default function ModelingLibraryApp() {
               style={{ width: "100%", padding: "10px 14px 10px 36px", borderRadius: 999, border: "none", background: T.card, color: T.ink, fontSize: 13.5, boxSizing: "border-box", minHeight: 42, boxShadow: "0 2px 10px rgba(0,0,0,0.22)" }} />
           </div>
 
-          <SortMenu organizeKey={organizeKey} specificValue={specificValue} onPick={(key, val) => { setOrganizeKey(key); setSpecificValue(val); }} />
+          <SortMenu organizeKey={organizeKey} specificValue={specificValue} onPick={(key, val) => { setOrganizeKey(key); setSpecificValue(val); }}
+            organizeOptions={organizeOptions} isAdmin={isAdmin} onAddCategory={addCategory} />
 
           {specificValue && (
             <button onClick={() => setSpecificValue("")} style={{ fontSize: 12.5, color: T.inkSoft, background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, padding: "6px 2px", minHeight: 32, fontWeight: 600 }}>
@@ -1329,10 +1466,42 @@ export default function ModelingLibraryApp() {
             background: T.cardAlt, borderLeft: `3px solid ${T.accentTo}`, borderRadius: 12,
             padding: "14px 16px", marginBottom: 16, fontSize: 13, lineHeight: 1.55, color: T.inkSoft,
           }}>
-            <strong style={{ color: T.ink }}>All kitchen pieces must be designed as add-ons to the main base module.</strong> Variations
-            such as cabinet doors, handles, countertops, shelves, and decorative elements should fit the base seamlessly
-            without requiring modifications. All modules must share consistent dimensions, alignment, and connection
-            points to ensure any combination of pieces can be mixed and matched together cleanly.
+            {editingBanner ? (
+              <div>
+                <textarea
+                  value={bannerDraft}
+                  onChange={(e) => setBannerDraft(e.target.value)}
+                  rows={4}
+                  style={{
+                    width: "100%", border: "none", borderRadius: 10, padding: "10px 12px", fontSize: 13,
+                    fontFamily: "'Plus Jakarta Sans', sans-serif", background: T.field, color: T.ink,
+                    boxSizing: "border-box", resize: "vertical", marginBottom: 8,
+                  }}
+                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => { saveBanner(bannerDraft); setEditingBanner(false); }} style={{
+                    background: T.accentTo, color: "#1A0F0A", border: "none", borderRadius: 999, padding: "7px 14px",
+                    fontSize: 12, fontWeight: 800, cursor: "pointer",
+                  }}>Save note</button>
+                  <button onClick={() => setEditingBanner(false)} style={{
+                    background: "none", color: T.inkSoft, border: "none", borderRadius: 999, padding: "7px 14px",
+                    fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  }}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                <span>{kitchenBanner}</span>
+                {isAdmin && (
+                  <button onClick={() => { setBannerDraft(kitchenBanner); setEditingBanner(true); }} style={{
+                    background: "none", border: "none", cursor: "pointer", flexShrink: 0, padding: 4,
+                    color: T.inkSoft, display: "flex",
+                  }} title="Edit this note">
+                    <Pencil size={14} />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -1368,8 +1537,10 @@ export default function ModelingLibraryApp() {
         )}
       </div>
 
-      {openItem && <ItemModal item={openItem} isAdmin={isAdmin} onClose={() => setOpenItemId(null)} onSave={saveItem} onDelete={deleteItem} />}
-      {isAdmin && showAdd && <AddItemModal onClose={() => setShowAdd(false)} onCreate={createItem} />}
+      {openItem && <ItemModal item={openItem} isAdmin={isAdmin} onClose={() => setOpenItemId(null)} onSave={saveItem} onDelete={deleteItem}
+        furnitureTypes={furnitureTypes} decorTypes={decorTypes} kitchenTypes={kitchenTypes} customTypes={customTypes} />}
+      {isAdmin && showAdd && <AddItemModal onClose={() => setShowAdd(false)} onCreate={createItem}
+        furnitureTypes={furnitureTypes} decorTypes={decorTypes} kitchenTypes={kitchenTypes} customTypes={customTypes} />}
     </div>
   );
 }
