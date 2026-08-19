@@ -558,7 +558,9 @@ function PhotoField({ src, onUpload, onDelete, name }) {
         return;
       }
       const clipboardItems = await navigator.clipboard.read();
+      const allTypesSeen = [];
       for (const item of clipboardItems) {
+        allTypesSeen.push(...item.types);
         const imageType = item.types.find((t) => t.startsWith("image/"));
         if (imageType) {
           const blob = await item.getType(imageType);
@@ -567,9 +569,15 @@ function PhotoField({ src, onUpload, onDelete, name }) {
           return;
         }
       }
-      setPasteError("No image found on your clipboard — copy an image first, then try again.");
+      console.log("Clipboard had content, but no image/* type. Types found:", allTypesSeen);
+      if (allTypesSeen.length > 0) {
+        setPasteError(`Your clipboard has something copied, but not as an image your browser can read directly (found: ${allTypesSeen.join(", ")}). This is common on mobile when copying from Photos — try "Add photo" instead, or copy an image from a webpage/browser rather than the Photos app.`);
+      } else {
+        setPasteError("Nothing found on your clipboard — copy an image first, then try again.");
+      }
     } catch (err) {
-      setPasteError("Couldn't read the clipboard — your browser may need permission, or use \"Add photo\" instead.");
+      console.error("Clipboard read failed:", err);
+      setPasteError(`Couldn't read the clipboard (${err.name || "error"}${err.message ? ": " + err.message : ""}) — use "Add photo" instead.`);
     }
   };
 
@@ -675,6 +683,67 @@ const ItemRow = React.memo(function ItemRow({ item, onOpen, onStatusChange }) {
 });
 
 /* ============================== ITEM MODAL (edit) ============================== */
+/* A note box that can show under any section OR any single subcategory
+   (e.g. the whole "Furniture" view, or just "Beds" within it). Admin can
+   add/edit; everyone sees it once it has text. `compact` gives it a smaller
+   footprint for inline use under a group header. */
+function NoteBlock({ value, isAdmin, editing, onStartEdit, onCancelEdit, onSave, label, compact }) {
+  const [draft, setDraft] = useState(value || "");
+  useEffect(() => { if (editing) setDraft(value || ""); }, [editing]);
+
+  if (!value && !isAdmin) return null;
+
+  return (
+    <div style={{
+      background: T.cardAlt, borderLeft: `3px solid ${T.accentTo}`, borderRadius: compact ? 10 : 12,
+      padding: compact ? "10px 12px" : "14px 16px", marginBottom: compact ? 10 : 16,
+      fontSize: compact ? 12.5 : 13, lineHeight: 1.5, color: T.inkSoft,
+    }}>
+      {editing ? (
+        <div>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={compact ? 2 : 4}
+            placeholder={`Add a note for ${label}…`}
+            style={{
+              width: "100%", border: "none", borderRadius: 10, padding: "9px 11px", fontSize: compact ? 12.5 : 13,
+              fontFamily: "'Plus Jakarta Sans', sans-serif", background: T.field, color: T.ink,
+              boxSizing: "border-box", resize: "vertical", marginBottom: 8,
+            }}
+          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={async () => { const ok = await onSave(draft); if (ok) onCancelEdit(); }} style={{
+              background: T.accentTo, color: "#1A0F0A", border: "none", borderRadius: 999, padding: "6px 12px",
+              fontSize: 11.5, fontWeight: 800, cursor: "pointer",
+            }}>Save note</button>
+            <button onClick={onCancelEdit} style={{
+              background: "none", color: T.inkSoft, border: "none", borderRadius: 999, padding: "6px 12px",
+              fontSize: 11.5, fontWeight: 700, cursor: "pointer",
+            }}>Cancel</button>
+          </div>
+        </div>
+      ) : value ? (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+          <span>{value}</span>
+          {isAdmin && (
+            <button onClick={onStartEdit} style={{ background: "none", border: "none", cursor: "pointer", flexShrink: 0, padding: 4, color: T.inkSoft, display: "flex" }} title="Edit this note">
+              <Pencil size={compact ? 12 : 14} />
+            </button>
+          )}
+        </div>
+      ) : (
+        <button onClick={onStartEdit} style={{
+          display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer",
+          color: T.accentTo, fontSize: compact ? 11.5 : 12.5, fontWeight: 700, padding: 0, fontFamily: "'Plus Jakarta Sans', sans-serif",
+        }}>
+          <Plus size={compact ? 11 : 13} /> Add a note for {label}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ReadOnlyField({ label, value }) {
   return (
     <div>
@@ -1111,7 +1180,8 @@ export default function ModelingLibraryApp() {
   const [customTypes, setCustomTypes] = useState([]);
   const [sectionNotes, setSectionNotes] = useState({});
   const [editingNoteFor, setEditingNoteFor] = useState("");
-  const [noteDraft, setNoteDraft] = useState("");
+  const [categoryNotes, setCategoryNotes] = useState({});
+  const [editingCategoryNoteFor, setEditingCategoryNoteFor] = useState("");
 
   // Auth: check for an existing session, and keep it in sync if it changes.
   useEffect(() => {
@@ -1246,17 +1316,22 @@ export default function ModelingLibraryApp() {
     return () => { supabase.removeChannel(channel); };
   }, [session]);
 
-  // Load admin-added categories and per-section notes, and keep them synced live.
+  // Load admin-added categories and notes (both whole-section and per-subcategory), and keep them synced live.
   useEffect(() => {
     if (supabaseConfigError || !session) return;
     (async () => {
       const { data: types } = await supabase.from("custom_types").select("*");
       if (types) setCustomTypes(types);
-      const { data: settings } = await supabase.from("app_settings").select("*").like("key", "note_%");
+      const { data: settings } = await supabase.from("app_settings").select("*");
       if (settings) {
         const notes = {};
-        for (const row of settings) notes[row.key.replace(/^note_/, "")] = row.value || "";
+        const catNotes = {};
+        for (const row of settings) {
+          if (row.key.startsWith("catnote_")) catNotes[row.key.slice("catnote_".length)] = row.value || "";
+          else if (row.key.startsWith("note_")) notes[row.key.slice("note_".length)] = row.value || "";
+        }
         setSectionNotes(notes);
+        setCategoryNotes(catNotes);
       }
     })();
 
@@ -1275,8 +1350,11 @@ export default function ModelingLibraryApp() {
       .channel("app-settings-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, (payload) => {
         const row = payload.new;
-        if (row && row.key && row.key.startsWith("note_")) {
-          setSectionNotes((prev) => ({ ...prev, [row.key.replace(/^note_/, "")]: row.value || "" }));
+        if (!row || !row.key) return;
+        if (row.key.startsWith("catnote_")) {
+          setCategoryNotes((prev) => ({ ...prev, [row.key.slice("catnote_".length)]: row.value || "" }));
+        } else if (row.key.startsWith("note_")) {
+          setSectionNotes((prev) => ({ ...prev, [row.key.slice("note_".length)]: row.value || "" }));
         }
       })
       .subscribe();
@@ -1306,6 +1384,22 @@ export default function ModelingLibraryApp() {
     if (error) {
       console.error("Save note failed:", error);
       setSectionNotes((prev) => ({ ...prev, [sectionKey]: previousValue }));
+      setSyncError(`That note didn't save: ${error.message || "unknown error"}`);
+      return false;
+    }
+    return true;
+  }, []);
+
+  const saveCategoryNote = useCallback(async (categoryValue, text) => {
+    let previousValue;
+    setCategoryNotes((prev) => {
+      previousValue = prev[categoryValue];
+      return { ...prev, [categoryValue]: text };
+    });
+    const { error } = await supabase.from("app_settings").upsert({ key: `catnote_${categoryValue}`, value: text });
+    if (error) {
+      console.error("Save category note failed:", error);
+      setCategoryNotes((prev) => ({ ...prev, [categoryValue]: previousValue }));
       setSyncError(`That note didn't save: ${error.message || "unknown error"}`);
       return false;
     }
@@ -1563,56 +1657,26 @@ export default function ModelingLibraryApp() {
           )}
         </div>
 
-        {(sectionNotes[organizeKey] || isAdmin) && (
-          <div style={{
-            background: T.cardAlt, borderLeft: `3px solid ${T.accentTo}`, borderRadius: 12,
-            padding: "14px 16px", marginBottom: 16, fontSize: 13, lineHeight: 1.55, color: T.inkSoft,
-          }}>
-            {editingNoteFor === organizeKey ? (
-              <div>
-                <textarea
-                  value={noteDraft}
-                  onChange={(e) => setNoteDraft(e.target.value)}
-                  rows={4}
-                  placeholder={`Add a note for ${organizeMode.label}…`}
-                  style={{
-                    width: "100%", border: "none", borderRadius: 10, padding: "10px 12px", fontSize: 13,
-                    fontFamily: "'Plus Jakarta Sans', sans-serif", background: T.field, color: T.ink,
-                    boxSizing: "border-box", resize: "vertical", marginBottom: 8,
-                  }}
-                />
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={async () => { const ok = await saveNote(organizeKey, noteDraft); if (ok) setEditingNoteFor(""); }} style={{
-                    background: T.accentTo, color: "#1A0F0A", border: "none", borderRadius: 999, padding: "7px 14px",
-                    fontSize: 12, fontWeight: 800, cursor: "pointer",
-                  }}>Save note</button>
-                  <button onClick={() => setEditingNoteFor("")} style={{
-                    background: "none", color: T.inkSoft, border: "none", borderRadius: 999, padding: "7px 14px",
-                    fontSize: 12, fontWeight: 700, cursor: "pointer",
-                  }}>Cancel</button>
-                </div>
-              </div>
-            ) : sectionNotes[organizeKey] ? (
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-                <span>{sectionNotes[organizeKey]}</span>
-                {isAdmin && (
-                  <button onClick={() => { setNoteDraft(sectionNotes[organizeKey] || ""); setEditingNoteFor(organizeKey); }} style={{
-                    background: "none", border: "none", cursor: "pointer", flexShrink: 0, padding: 4,
-                    color: T.inkSoft, display: "flex",
-                  }} title="Edit this note">
-                    <Pencil size={14} />
-                  </button>
-                )}
-              </div>
-            ) : isAdmin ? (
-              <button onClick={() => { setNoteDraft(""); setEditingNoteFor(organizeKey); }} style={{
-                display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer",
-                color: T.accentTo, fontSize: 12.5, fontWeight: 700, padding: 0, fontFamily: "'Plus Jakarta Sans', sans-serif",
-              }}>
-                <Plus size={13} /> Add a note for {organizeMode.label}
-              </button>
-            ) : null}
-          </div>
+        <NoteBlock
+          value={sectionNotes[organizeKey]}
+          isAdmin={isAdmin}
+          editing={editingNoteFor === organizeKey}
+          onStartEdit={() => setEditingNoteFor(organizeKey)}
+          onCancelEdit={() => setEditingNoteFor("")}
+          onSave={(text) => saveNote(organizeKey, text)}
+          label={organizeMode.label}
+        />
+
+        {specificValue && (
+          <NoteBlock
+            value={categoryNotes[specificValue]}
+            isAdmin={isAdmin}
+            editing={editingCategoryNoteFor === specificValue}
+            onStartEdit={() => setEditingCategoryNoteFor(specificValue)}
+            onCancelEdit={() => setEditingCategoryNoteFor("")}
+            onSave={(text) => saveCategoryNote(specificValue, text)}
+            label={specificValue}
+          />
         )}
 
         <div style={{ fontSize: 13, color: T.inkSoft, marginBottom: 14, fontWeight: 600 }}>{filtered.length} item{filtered.length !== 1 ? "s" : ""}</div>
@@ -1623,12 +1687,26 @@ export default function ModelingLibraryApp() {
           return (
             <div key={g.key} style={{ marginBottom: 8 }}>
               {!specificValue && (
-                <button className="sd-group-header" onClick={() => setExpanded((prev) => { const next = new Set(prev); next.has(g.key) ? next.delete(g.key) : next.add(g.key); return next; })}
-                  style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", cursor: "pointer", padding: "10px 2px", textAlign: "left" }}>
-                  {isCollapsed ? <ChevronRight size={15} color={T.inkSoft} /> : <ChevronDown size={15} color={T.inkSoft} />}
-                  <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 16, fontWeight: 800, color: T.ink }}>{g.key}</span>
-                  <span style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>{doneCount}/{g.items.length} done</span>
-                </button>
+                <>
+                  <button className="sd-group-header" onClick={() => setExpanded((prev) => { const next = new Set(prev); next.has(g.key) ? next.delete(g.key) : next.add(g.key); return next; })}
+                    style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", cursor: "pointer", padding: "10px 2px", textAlign: "left" }}>
+                    {isCollapsed ? <ChevronRight size={15} color={T.inkSoft} /> : <ChevronDown size={15} color={T.inkSoft} />}
+                    <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 16, fontWeight: 800, color: T.ink }}>{g.key}</span>
+                    <span style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>{doneCount}/{g.items.length} done</span>
+                  </button>
+                  {!isCollapsed && (
+                    <NoteBlock
+                      compact
+                      value={categoryNotes[g.key]}
+                      isAdmin={isAdmin}
+                      editing={editingCategoryNoteFor === g.key}
+                      onStartEdit={() => setEditingCategoryNoteFor(g.key)}
+                      onCancelEdit={() => setEditingCategoryNoteFor("")}
+                      onSave={(text) => saveCategoryNote(g.key, text)}
+                      label={g.key}
+                    />
+                  )}
+                </>
               )}
               {!isCollapsed && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
