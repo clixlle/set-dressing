@@ -725,7 +725,7 @@ function NoteBlock({ value, isAdmin, editing, onStartEdit, onCancelEdit, onSave,
         </div>
       ) : value ? (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-          <span>{value}</span>
+          <span style={{ whiteSpace: "pre-wrap" }}>{value}</span>
           {isAdmin && (
             <button onClick={onStartEdit} style={{ background: "none", border: "none", cursor: "pointer", flexShrink: 0, padding: 4, color: T.inkSoft, display: "flex" }} title="Edit this note">
               <Pencil size={compact ? 12 : 14} />
@@ -748,7 +748,7 @@ function ReadOnlyField({ label, value }) {
   return (
     <div>
       <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: T.inkSoft, marginBottom: 7, display: "block" }}>{label}</span>
-      <div style={{ padding: "11px 12px", borderRadius: 12, background: T.field, color: T.ink, fontSize: 14, minHeight: 20 }}>{value || "—"}</div>
+      <div style={{ padding: "11px 12px", borderRadius: 12, background: T.field, color: T.ink, fontSize: 14, minHeight: 20, whiteSpace: "pre-wrap" }}>{value || "—"}</div>
     </div>
   );
 }
