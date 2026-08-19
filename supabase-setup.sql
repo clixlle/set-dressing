@@ -18,6 +18,7 @@ create table if not exists items (
   photo text,
   description text default '',
   sort_order integer,
+  thumbnail text,
   created_at bigint,
   updated_at bigint
 );

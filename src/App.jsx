@@ -216,7 +216,7 @@ function uid(prefix) {
 // Bump this only when buildSeedItems() changes in a way that needs a fresh
 // reconciliation pass (new category, structural fix, etc). Otherwise the
 // background cleanup below skips itself entirely on every normal load.
-const RECONCILIATION_VERSION = "v2";
+const RECONCILIATION_VERSION = "v3";
 
 const ITEM_META_COLUMNS = "id,name,type,type_group,room,style,status,description,sort_order,created_at,updated_at";
 
@@ -238,13 +238,14 @@ async function fetchAllItemsMeta() {
   return all;
 }
 
-// Fetches just id + photo, for filling photos in after the list is already visible.
+// Fetches just id + photo — used by the admin reconciliation pass to check/shrink
+// oversized photos. Not used for the regular list view (see fetchAllThumbnails).
 async function fetchAllPhotos() {
   const pageSize = 500; // smaller pages — photo payloads are much heavier per row
   let all = [];
   let from = 0;
   while (true) {
-    const { data, error } = await supabase.from("items").select("id,photo").range(from, from + pageSize - 1);
+    const { data, error } = await supabase.from("items").select("id,photo,thumbnail").range(from, from + pageSize - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
     all = all.concat(data);
@@ -252,6 +253,33 @@ async function fetchAllPhotos() {
     from += pageSize;
   }
   return all;
+}
+
+// Fetches just id + thumbnail — this is what fills in row thumbnails after the
+// fast metadata-only load. Thumbnails are small/compressed, so this is a much
+// lighter request than pulling every full-quality photo just to show 90px previews.
+async function fetchAllThumbnails() {
+  const pageSize = 1000;
+  let all = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase.from("items").select("id,thumbnail").range(from, from + pageSize - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
+// Fetches the full-quality photo for a single item — used on-demand when
+// that item is actually opened, rather than bulk-loading every full photo
+// in the whole library up front.
+async function fetchItemPhoto(id) {
+  const { data, error } = await supabase.from("items").select("photo").eq("id", id).maybeSingle();
+  if (error) { console.error("Photo fetch failed:", error); return null; }
+  return data?.photo ?? null;
 }
 
 function typeGroupFor(typeName, customTypes = []) {
@@ -573,6 +601,51 @@ async function shrinkPhotoIfOversized(dataUrl, maxBytes = 350000, maxDimension =
   }
 }
 
+// A small, compressed thumbnail for list rows — a 90px row doesn't need the
+// same full-quality PNG as the detail view, and loading the full photo for
+// every visible row is what was making thumbnails feel slow/missing.
+function blobToThumbnailDataUrl(blob, maxDimension = 220, quality = 0.62) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      let { naturalWidth: w, naturalHeight: h } = img;
+      if (w > maxDimension || h > maxDimension) {
+        const scale = maxDimension / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#fff"; // JPEG has no transparency — flatten onto white first
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
+}
+
+async function dataUrlToThumbnail(dataUrl) {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  return blobToThumbnailDataUrl(blob);
+}
+
+// Generates the full-quality photo and a small compressed thumbnail together
+// from the same source blob, so an upload only needs to decode the image once.
+async function processImageBlob(blob) {
+  const [photo, thumbnail] = await Promise.all([
+    blobToPngDataUrl(blob),
+    blobToThumbnailDataUrl(blob),
+  ]);
+  return { photo, thumbnail };
+}
+
 function extractPastedImage(clipboardData) {
   const items = clipboardData?.items;
   if (!items) return null;
@@ -588,7 +661,7 @@ function extractPastedImage(clipboardData) {
    Supports pasting an image (Ctrl/Cmd+V on desktop, or the Paste button on any
    device, since mobile browsers don't offer OS paste on a plain div) — always
    saved as a PNG. */
-function PhotoField({ src, onUpload, onDelete, name }) {
+function PhotoField({ src, fullSrc, onUpload, onDelete, name }) {
   const inputRef = useRef(null);
   const boxRef = useRef(null);
   const [pasteError, setPasteError] = useState("");
@@ -597,8 +670,8 @@ function PhotoField({ src, onUpload, onDelete, name }) {
     const file = extractPastedImage(e.clipboardData);
     if (!file) return;
     e.preventDefault();
-    const pngDataUrl = await blobToPngDataUrl(file);
-    onUpload(pngDataUrl);
+    const { photo, thumbnail } = await processImageBlob(file);
+    onUpload(photo, thumbnail);
   };
 
   const pasteFromClipboard = async () => {
@@ -615,8 +688,8 @@ function PhotoField({ src, onUpload, onDelete, name }) {
         const imageType = item.types.find((t) => t.startsWith("image/"));
         if (imageType) {
           const blob = await item.getType(imageType);
-          const pngDataUrl = await blobToPngDataUrl(blob);
-          onUpload(pngDataUrl);
+          const { photo, thumbnail } = await processImageBlob(blob);
+          onUpload(photo, thumbnail);
           return;
         }
       }
@@ -657,8 +730,8 @@ function PhotoField({ src, onUpload, onDelete, name }) {
           onChange={async (e) => {
             const file = e.target.files?.[0];
             if (file) {
-              const pngDataUrl = await blobToPngDataUrl(file);
-              onUpload(pngDataUrl);
+              const { photo, thumbnail } = await processImageBlob(file);
+              onUpload(photo, thumbnail);
             }
             e.target.value = "";
           }} />
@@ -678,10 +751,11 @@ function PhotoField({ src, onUpload, onDelete, name }) {
         </button>
         {src && (
           <>
-            <button onClick={() => downloadPhoto(src, name)} style={{
-              display: "flex", alignItems: "center", gap: 6, background: T.cardAlt, color: T.ink, border: "none",
-              borderRadius: 999, padding: "8px 14px", cursor: "pointer", fontSize: 12.5, fontWeight: 700,
-            }}>
+            <button onClick={() => downloadPhoto(fullSrc || src, name)} disabled={!fullSrc} style={{
+              display: "flex", alignItems: "center", gap: 6, background: T.cardAlt, color: fullSrc ? T.ink : T.inkSoft, border: "none",
+              borderRadius: 999, padding: "8px 14px", cursor: fullSrc ? "pointer" : "default", fontSize: 12.5, fontWeight: 700,
+              opacity: fullSrc ? 1 : 0.6,
+            }} title={fullSrc ? undefined : "Full-quality photo is still loading…"}>
               <Download size={13} /> Download
             </button>
             <button onClick={onDelete} style={{
@@ -718,7 +792,7 @@ const ItemRow = React.memo(function ItemRow({ item, onOpen, onStatusChange }) {
       onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.22)"; }}
     >
       <div className="sd-row-main">
-        <Photo className="sd-row-photo" src={item.photo} editable={false} size={92} />
+        <Photo className="sd-row-photo" src={item.thumbnail || item.photo} editable={false} size={92} />
         <div className="sd-row-text" style={{ flex: 1, minWidth: 0 }}>
           <div className="sd-row-name" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 16.5, fontWeight: 700, color: T.ink, marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {item.name}
@@ -806,7 +880,7 @@ function ReadOnlyField({ label, value }) {
 
 /* Full-size, click-to-open photo view with a Download button — used for the
    read-only (modeler) view, where viewing/downloading is allowed but editing isn't. */
-function ViewablePhoto({ src, name }) {
+function ViewablePhoto({ src, fullSrc, name }) {
   const [open, setOpen] = useState(false);
   if (!src) return null;
   return (
@@ -816,10 +890,11 @@ function ViewablePhoto({ src, name }) {
           src={src} alt="" onClick={() => setOpen(true)}
           style={{ width: "100%", aspectRatio: "1 / 1", maxHeight: 280, objectFit: "cover", borderRadius: 18, cursor: "zoom-in" }}
         />
-        <button onClick={() => downloadPhoto(src, name)} style={{
-          display: "flex", alignItems: "center", gap: 6, background: T.cardAlt, color: T.ink, border: "none",
-          borderRadius: 999, padding: "8px 14px", cursor: "pointer", fontSize: 12.5, fontWeight: 700, marginTop: 10,
-        }}>
+        <button onClick={() => downloadPhoto(fullSrc || src, name)} disabled={!fullSrc} style={{
+          display: "flex", alignItems: "center", gap: 6, background: T.cardAlt, color: fullSrc ? T.ink : T.inkSoft, border: "none",
+          borderRadius: 999, padding: "8px 14px", cursor: fullSrc ? "pointer" : "default", fontSize: 12.5, fontWeight: 700, marginTop: 10,
+          opacity: fullSrc ? 1 : 0.6,
+        }} title={fullSrc ? undefined : "Full-quality photo is still loading…"}>
           <Download size={13} /> Download photo
         </button>
       </div>
@@ -837,7 +912,7 @@ function ViewablePhoto({ src, name }) {
           }}>
             <X size={20} color="#fff" />
           </button>
-          <img src={src} alt="" style={{ maxWidth: "92vw", maxHeight: "88vh", objectFit: "contain", borderRadius: 12 }} onClick={(e) => e.stopPropagation()} />
+          <img src={fullSrc || src} alt="" style={{ maxWidth: "92vw", maxHeight: "88vh", objectFit: "contain", borderRadius: 12 }} onClick={(e) => e.stopPropagation()} />
         </div>
       )}
     </>
@@ -867,7 +942,7 @@ function ItemModal({ item, isAdmin, onClose, onSave, onStatusChange, onDelete, f
 
             <div style={{ marginBottom: 18 }}>
               <span style={labelStyle}>Photo</span>
-              <PhotoField src={draft.photo} name={draft.name} onUpload={(url) => setDraft({ ...draft, photo: url })} onDelete={() => setDraft({ ...draft, photo: null })} />
+              <PhotoField src={draft.photo || draft.thumbnail} fullSrc={draft.photo} name={draft.name} onUpload={(photo, thumbnail) => setDraft({ ...draft, photo, thumbnail })} onDelete={() => setDraft({ ...draft, photo: null, thumbnail: null })} />
             </div>
 
             <div className="sd-modal-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
@@ -908,7 +983,7 @@ function ItemModal({ item, isAdmin, onClose, onSave, onStatusChange, onDelete, f
           </>
         ) : (
           <>
-            <ViewablePhoto src={draft.photo} name={draft.name} />
+            <ViewablePhoto src={draft.photo || draft.thumbnail} fullSrc={draft.photo} name={draft.name} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
               <ReadOnlyField label="Object type" value={draft.type} />
               <ReadOnlyField label="Style" value={draft.style} />
@@ -943,7 +1018,7 @@ function ItemModal({ item, isAdmin, onClose, onSave, onStatusChange, onDelete, f
 
 /* ============================== ADD ITEM MODAL ============================== */
 function AddItemModal({ onClose, onCreate, furnitureTypes, decorTypes, kitchenTypes, customTypes, rooms, styles }) {
-  const [draft, setDraft] = useState({ name: "", type: TYPE_NAMES[0], typeGroup: CATEGORY_TYPES[0].group, room: ROOMS[0], style: STYLE_NAMES[0], status: "not-started", photo: null, description: "" });
+  const [draft, setDraft] = useState({ name: "", type: TYPE_NAMES[0], typeGroup: CATEGORY_TYPES[0].group, room: ROOMS[0], style: STYLE_NAMES[0], status: "not-started", photo: null, thumbnail: null, description: "" });
   const inputStyle = { width: "100%", border: "none", borderRadius: 12, padding: "11px 12px", fontSize: 14, fontFamily: "'Plus Jakarta Sans', sans-serif", background: T.field, color: T.ink, boxSizing: "border-box" };
   const labelStyle = { fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: T.inkSoft, marginBottom: 7, display: "block" };
 
@@ -969,7 +1044,7 @@ function AddItemModal({ onClose, onCreate, furnitureTypes, decorTypes, kitchenTy
 
         <div style={{ marginBottom: 18 }}>
           <span style={labelStyle}>Photo</span>
-          <PhotoField src={draft.photo} name={draft.name || suggestedName} onUpload={(url) => setDraft({ ...draft, photo: url })} onDelete={() => setDraft({ ...draft, photo: null })} />
+          <PhotoField src={draft.photo || draft.thumbnail} fullSrc={draft.photo} name={draft.name || suggestedName} onUpload={(photo, thumbnail) => setDraft({ ...draft, photo, thumbnail })} onDelete={() => setDraft({ ...draft, photo: null, thumbnail: null })} />
         </div>
 
         <div className="sd-modal-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 22 }}>
@@ -1293,17 +1368,26 @@ export default function ModelingLibraryApp() {
     })();
   }, [session]);
 
-  // Fills photos in after the fast metadata-only load — everyone (admin and
-  // modeler) gets this, since everyone wants to see thumbnails, just not at
-  // the cost of blocking the initial render.
+  // Fills row thumbnails in after the fast metadata-only load — small,
+  // compressed images, not the full-quality photos (those load on-demand
+  // only when an item is actually opened — see fetchItemPhoto).
   const loadPhotosInBackground = useCallback(async () => {
     try {
-      const photos = await fetchAllPhotos();
-      const photoMap = new Map(photos.map((p) => [p.id, p.photo]));
-      setItems((prev) => prev.map((i) => (photoMap.has(i.id) ? { ...i, photo: photoMap.get(i.id) ?? null } : i)));
+      const thumbs = await fetchAllThumbnails();
+      const thumbMap = new Map(thumbs.map((t) => [t.id, t.thumbnail]));
+      setItems((prev) => prev.map((i) => (thumbMap.has(i.id) ? { ...i, thumbnail: thumbMap.get(i.id) ?? null } : i)));
     } catch (e) {
-      console.error("Background photo load failed:", e);
+      console.error("Background thumbnail load failed:", e);
     }
+  }, []);
+
+  // When an item is opened, load its full-quality photo on demand if we
+  // don't already have it — the bulk background load only ever fetches
+  // small thumbnails, never every full photo in the library.
+  const ensureFullPhotoLoaded = useCallback(async (item) => {
+    if (!item || item.photo) return; // already have it, or already tried
+    const photo = await fetchItemPhoto(item.id);
+    if (photo) setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, photo } : i)));
   }, []);
 
   // Background cleanup — only actually does work if the database hasn't
@@ -1410,6 +1494,28 @@ export default function ModelingLibraryApp() {
           }));
         }
         console.log("Finished shrinking oversized photos.");
+      }
+
+      // Generate a small thumbnail for any item that has a full photo but no
+      // thumbnail yet — that's what makes row previews fast, since the list
+      // only ever loads thumbnails in bulk, never full photos.
+      const missingThumbs = allPhotos.filter((row) => row.photo && !row.thumbnail && validIds.has(row.id));
+      if (missingThumbs.length > 0) {
+        console.log(`Generating ${missingThumbs.length} thumbnail(s)…`);
+        const batchSize = 6;
+        for (let i = 0; i < missingThumbs.length; i += batchSize) {
+          const batch = missingThumbs.slice(i, i + batchSize);
+          await Promise.all(batch.map(async (row) => {
+            try {
+              const thumbnail = await dataUrlToThumbnail(row.photo);
+              const { error } = await supabase.from("items").update({ thumbnail }).eq("id", row.id);
+              if (!error) setItems((prev) => prev.map((i) => (i.id === row.id ? { ...i, thumbnail } : i)));
+            } catch (e) {
+              console.error("Thumbnail generation failed for", row.id, e);
+            }
+          }));
+        }
+        console.log("Finished generating thumbnails.");
       }
 
       await supabase.from("app_settings").upsert({ key: "reconciliation_version", value: RECONCILIATION_VERSION });
@@ -1668,6 +1774,11 @@ export default function ModelingLibraryApp() {
   }, [filtered, specificValue, organizeMode]);
 
   const openItem = items && openItemId ? items.find((i) => i.id === openItemId) : null;
+
+  useEffect(() => {
+    if (openItemId) ensureFullPhotoLoaded(items?.find((i) => i.id === openItemId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openItemId]);
 
   if (session === undefined) {
     return (
