@@ -220,6 +220,16 @@ const RECONCILIATION_VERSION = "v3";
 
 const ITEM_META_COLUMNS = "id,name,type,type_group,room,style,status,description,sort_order,created_at,updated_at";
 
+// Prevents any single request from being able to hang the loading screen
+// forever — if it doesn't resolve in time, this rejects with a clear message
+// instead of leaving the user staring at a spinner indefinitely.
+function withTimeout(promise, ms, label = "This") {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} took too long and timed out`)), ms)),
+  ]);
+}
+
 // Fetches everything EXCEPT photos — the list can render and become
 // interactive immediately from this, without waiting for every photo in the
 // whole library to download first.
@@ -1339,7 +1349,7 @@ export default function ModelingLibraryApp() {
     if (!session) return; // wait until signed in
     (async () => {
       try {
-        const metaData = await fetchAllItemsMeta();
+        const metaData = await withTimeout(fetchAllItemsMeta(), 15000, "Loading the item list");
 
         if ((!metaData || metaData.length === 0) && isAdmin) {
           const seed = buildSeedItems();
@@ -1358,10 +1368,13 @@ export default function ModelingLibraryApp() {
         setItems(metaData.map((row) => ({ ...rowToItem(row), photo: null })));
         setLoaded(true);
         loadPhotosInBackground(); // fire-and-forget — fills photos in as they arrive
-        if (isAdmin) runReconciliation(metaData); // fire-and-forget — never blocks the UI
+        // Give the page a moment to actually finish rendering and become
+        // interactive before background cleanup starts competing for the
+        // main thread with its own (heavier) fetch and image processing.
+        if (isAdmin) setTimeout(() => runReconciliation(metaData), 2000);
       } catch (e) {
         console.error("Supabase load failed:", e);
-        setSyncError("Couldn't connect to the database — showing a local, unsaved copy instead.");
+        setSyncError(`Couldn't load the library (${e.message || "unknown error"}) — showing a local, unsaved copy instead. Try reloading.`);
         setItems(buildSeedItems());
         setLoaded(true);
       }
@@ -1492,6 +1505,7 @@ export default function ModelingLibraryApp() {
               if (!error) setItems((prev) => prev.map((i) => (i.id === row.id ? { ...i, photo: shrunk } : i)));
             }
           }));
+          await new Promise((r) => setTimeout(r, 40)); // yield to the main thread between batches
         }
         console.log("Finished shrinking oversized photos.");
       }
@@ -1514,6 +1528,7 @@ export default function ModelingLibraryApp() {
               console.error("Thumbnail generation failed for", row.id, e);
             }
           }));
+          await new Promise((r) => setTimeout(r, 40)); // yield to the main thread between batches
         }
         console.log("Finished generating thumbnails.");
       }
