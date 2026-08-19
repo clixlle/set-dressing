@@ -1323,9 +1323,13 @@ export default function ModelingLibraryApp() {
   // Auth: check for an existing session, and keep it in sync if it changes.
   useEffect(() => {
     if (supabaseConfigError) { setSession(null); return; }
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      if (data.session) supabase.realtime.setAuth(data.session.access_token);
+    });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
+      if (newSession) supabase.realtime.setAuth(newSession.access_token);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -1540,6 +1544,10 @@ export default function ModelingLibraryApp() {
   }, []);
 
   // Live sync — when anyone on any account changes an item, everyone else sees it immediately.
+  // If the realtime connection can't be established, this gives up after one
+  // failure instead of retrying forever — the app still works fully without
+  // it, just without instant cross-account updates (a page reload picks up
+  // the latest data regardless).
   useEffect(() => {
     if (supabaseConfigError || !session) return;
     const channel = supabase
@@ -1555,7 +1563,12 @@ export default function ModelingLibraryApp() {
           return exists ? prev.map((i) => (i.id === incoming.id ? incoming : i)) : [incoming, ...prev];
         });
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error(`Realtime (items) couldn't connect (${status}) — live sync is off for this session; reload to see others' changes.`);
+          supabase.removeChannel(channel);
+        }
+      });
     return () => { supabase.removeChannel(channel); };
   }, [session]);
 
@@ -1587,7 +1600,12 @@ export default function ModelingLibraryApp() {
           return exists ? prev.map((c) => (c.id === payload.new.id ? payload.new : c)) : [...prev, payload.new];
         });
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error(`Realtime (custom_types) couldn't connect (${status}) — giving up instead of retrying forever.`);
+          supabase.removeChannel(typesChannel);
+        }
+      });
 
     const settingsChannel = supabase
       .channel("app-settings-realtime")
@@ -1600,7 +1618,12 @@ export default function ModelingLibraryApp() {
           setSectionNotes((prev) => ({ ...prev, [row.key.slice("note_".length)]: row.value || "" }));
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error(`Realtime (app_settings) couldn't connect (${status}) — giving up instead of retrying forever.`);
+          supabase.removeChannel(settingsChannel);
+        }
+      });
 
     return () => { supabase.removeChannel(typesChannel); supabase.removeChannel(settingsChannel); };
   }, [session]);
