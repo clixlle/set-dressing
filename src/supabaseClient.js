@@ -57,6 +57,7 @@ export function rowToItem(row) {
     status: row.status,
     photo: row.photo,
     description: row.description || "",
+    sortOrder: row.sort_order,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -73,6 +74,7 @@ export function itemToRow(item) {
     status: item.status,
     photo: item.photo,
     description: item.description || "",
+    sort_order: item.sortOrder ?? null,
     created_at: item.createdAt,
     updated_at: item.updatedAt,
   };

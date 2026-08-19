@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
-  Search, Plus, X, ChevronDown, ChevronRight, Trash2, Camera, Check, Clock, Circle, Boxes, Loader2, Download, Pencil, ClipboardPaste
+  Search, Plus, X, ChevronDown, ChevronRight, Trash2, Camera, Check, Clock, Circle, Boxes, Loader2, Download, Pencil, ClipboardPaste, GripVertical
 } from "lucide-react";
 import { supabase, rowToItem, itemToRow, supabaseConfigError, signIn, signOut, roleForEmail } from "./supabaseClient";
 
@@ -1177,6 +1177,7 @@ export default function ModelingLibraryApp() {
   const [openItemId, setOpenItemId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
+  const [draggedItemId, setDraggedItemId] = useState(null);
   const [customTypes, setCustomTypes] = useState([]);
   const [sectionNotes, setSectionNotes] = useState({});
   const [editingNoteFor, setEditingNoteFor] = useState("");
@@ -1283,6 +1284,22 @@ export default function ModelingLibraryApp() {
             if (removed < duplicateIds.length) {
               setSyncError(`Cleaned up ${removed} duplicate items, but ${duplicateIds.length - removed} couldn't be removed — try reloading as admin again.`);
             }
+          }
+
+          // Give any item that's never had a custom position a baseline order
+          // (alphabetical, matching how they looked before drag-to-reorder existed)
+          // so dragging has a sensible starting point instead of items with no
+          // order sorting unpredictably.
+          const stillMissingOrder = data.filter((row) => row.sort_order == null && !duplicateIds.includes(row.id));
+          if (stillMissingOrder.length > 0) {
+            const alphabetical = [...stillMissingOrder].sort((a, b) => a.name.localeCompare(b.name));
+            const orderUpdates = alphabetical.map((row, idx) => ({ id: row.id, sort_order: idx }));
+            for (let i = 0; i < orderUpdates.length; i += 150) {
+              const chunk = orderUpdates.slice(i, i + 150);
+              await Promise.all(chunk.map((u) => supabase.from("items").update({ sort_order: u.sort_order }).eq("id", u.id)));
+            }
+            const orderMap = new Map(orderUpdates.map((u) => [u.id, u.sort_order]));
+            setItems((prev) => prev.map((i) => (orderMap.has(i.id) ? { ...i, sortOrder: orderMap.get(i.id) } : i)));
           }
         } else {
           setItems((data || []).map(rowToItem));
@@ -1452,6 +1469,35 @@ export default function ModelingLibraryApp() {
     }
   }, []);
 
+  // Drag-to-reorder — admin only. Reordering is scoped to whatever group the
+  // items are being dragged within (e.g. within "Beds"); the underlying
+  // sort_order values only matter relative to items sharing the same group.
+  const reorderWithinGroup = useCallback(async (groupItems, draggedId, targetId) => {
+    if (draggedId === targetId) return;
+    const fromIndex = groupItems.findIndex((i) => i.id === draggedId);
+    const toIndex = groupItems.findIndex((i) => i.id === targetId);
+    if (fromIndex === -1 || toIndex === -1) return;
+    const reordered = [...groupItems];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+
+    const updates = reordered.map((item, idx) => ({ id: item.id, sortOrder: idx }));
+    let previous;
+    setItems((prev) => {
+      previous = prev;
+      const orderMap = new Map(updates.map((u) => [u.id, u.sortOrder]));
+      return prev.map((i) => (orderMap.has(i.id) ? { ...i, sortOrder: orderMap.get(i.id) } : i));
+    });
+
+    const results = await Promise.all(updates.map((u) => supabase.from("items").update({ sort_order: u.sortOrder }).eq("id", u.id)));
+    const failed = results.find((r) => r.error);
+    if (failed) {
+      console.error("Reorder failed:", failed.error);
+      setItems(previous);
+      setSyncError("That reorder didn't save — please try again.");
+    }
+  }, []);
+
   const createItem = useCallback(async (item) => {
     setItems((prev) => [item, ...prev]);
     setShowAdd(false);
@@ -1493,17 +1539,24 @@ export default function ModelingLibraryApp() {
   }, [items, search, specificValue, organizeMode, organizeKey]);
 
   const groups = useMemo(() => {
-    const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
-    if (specificValue) return [{ key: specificValue, items: sorted }];
+    const byName = (a, b) => a.name.localeCompare(b.name);
+    const byOrder = (a, b) => {
+      const ao = a.sortOrder, bo = b.sortOrder;
+      if (ao == null && bo == null) return byName(a, b);
+      if (ao == null) return 1;
+      if (bo == null) return -1;
+      return ao - bo || byName(a, b);
+    };
+    if (specificValue) return [{ key: specificValue, items: [...filtered].sort(byOrder) }];
     const map = new Map();
-    for (const item of sorted) {
+    for (const item of filtered) {
       const k = item[organizeMode.field];
       if (!map.has(k)) map.set(k, []);
       map.get(k).push(item);
     }
     return organizeMode.values
       .filter((v) => map.has(v))
-      .map((v) => ({ key: v, items: map.get(v) }));
+      .map((v) => ({ key: v, items: map.get(v).sort(byOrder) }));
   }, [filtered, specificValue, organizeMode]);
 
   const openItem = items && openItemId ? items.find((i) => i.id === openItemId) : null;
@@ -1710,7 +1763,26 @@ export default function ModelingLibraryApp() {
               )}
               {!isCollapsed && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
-                  {g.items.map((item) => <ItemRow key={item.id} item={item} onOpen={setOpenItemId} onStatusChange={setStatus} />)}
+                  {g.items.map((item) => (
+                    isAdmin ? (
+                      <div
+                        key={item.id}
+                        draggable
+                        onDragStart={(e) => { setDraggedItemId(item.id); e.dataTransfer.effectAllowed = "move"; }}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => { e.preventDefault(); if (draggedItemId) reorderWithinGroup(g.items, draggedItemId, item.id); setDraggedItemId(null); }}
+                        onDragEnd={() => setDraggedItemId(null)}
+                        style={{ display: "flex", alignItems: "center", gap: 4, opacity: draggedItemId === item.id ? 0.4 : 1 }}
+                      >
+                        <GripVertical size={16} color={T.inkSoft} style={{ flexShrink: 0, cursor: "grab" }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <ItemRow item={item} onOpen={setOpenItemId} onStatusChange={setStatus} />
+                        </div>
+                      </div>
+                    ) : (
+                      <ItemRow key={item.id} item={item} onOpen={setOpenItemId} onStatusChange={setStatus} />
+                    )
+                  ))}
                 </div>
               )}
             </div>

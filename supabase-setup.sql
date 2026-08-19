@@ -17,6 +17,7 @@ create table if not exists items (
   status text not null default 'not-started',
   photo text,
   description text default '',
+  sort_order integer,
   created_at bigint,
   updated_at bigint
 );
@@ -67,6 +68,7 @@ begin
        or NEW.style is distinct from OLD.style
        or NEW.photo is distinct from OLD.photo
        or NEW.description is distinct from OLD.description
+       or NEW.sort_order is distinct from OLD.sort_order
        or NEW.created_at is distinct from OLD.created_at
     then
       raise exception 'Modelers can only change status';
