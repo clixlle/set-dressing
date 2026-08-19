@@ -225,7 +225,7 @@ const RECONCILIATION_VERSION = "v3";
 // page reload picks up any changes made elsewhere. Flip this back on once
 // the underlying connection issue is confirmed fixed (e.g. after checking
 // with Supabase whether Realtime is enabled/reachable for this project).
-const REALTIME_ENABLED = true;
+const REALTIME_ENABLED = false;
 
 const ITEM_META_COLUMNS = "id,name,type,type_group,room,style,status,description,sort_order,created_at,updated_at";
 
