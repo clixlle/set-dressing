@@ -218,6 +218,15 @@ function uid(prefix) {
 // background cleanup below skips itself entirely on every normal load.
 const RECONCILIATION_VERSION = "v3";
 
+// Realtime is currently disabled — the WebSocket connection was failing
+// outright (401 on every attempt) and kept retrying indefinitely at the
+// transport level even after each channel gave up individually, which was
+// hammering the project continuously. The app works fully without it; a
+// page reload picks up any changes made elsewhere. Flip this back on once
+// the underlying connection issue is confirmed fixed (e.g. after checking
+// with Supabase whether Realtime is enabled/reachable for this project).
+const REALTIME_ENABLED = false;
+
 const ITEM_META_COLUMNS = "id,name,type,type_group,room,style,status,description,sort_order,created_at,updated_at";
 
 // Prevents any single request from being able to hang the loading screen
@@ -1549,7 +1558,7 @@ export default function ModelingLibraryApp() {
   // it, just without instant cross-account updates (a page reload picks up
   // the latest data regardless).
   useEffect(() => {
-    if (supabaseConfigError || !session) return;
+    if (supabaseConfigError || !session || !REALTIME_ENABLED) return;
     const channel = supabase
       .channel("items-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "items" }, (payload) => {
@@ -1590,6 +1599,8 @@ export default function ModelingLibraryApp() {
         setCategoryNotes(catNotes);
       }
     })();
+
+    if (!REALTIME_ENABLED) return;
 
     const typesChannel = supabase
       .channel("custom-types-realtime")
