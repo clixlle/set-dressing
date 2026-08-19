@@ -213,6 +213,11 @@ function uid(prefix) {
 // response limit — with 1000+ items in this library, that quietly cuts off
 // whatever was inserted last (which happened to be the whole Kitchen System
 // category). This fetches every row, no matter how many there are.
+// Bump this only when buildSeedItems() changes in a way that needs a fresh
+// reconciliation pass (new category, structural fix, etc). Otherwise the
+// background cleanup below skips itself entirely on every normal load.
+const RECONCILIATION_VERSION = "v1";
+
 async function fetchAllItems() {
   const pageSize = 1000;
   let all = [];
@@ -504,16 +509,26 @@ function downloadPhoto(dataUrl, name) {
 }
 
 /* Converts any image blob (JPEG, WEBP, whatever the clipboard gives us) to a PNG data URL. */
-function blobToPngDataUrl(blob) {
+// Resizes to a sane max dimension before exporting — an uncapped camera photo
+// or screenshot can be several MB, and with a library this size that adds up
+// to a payload every single page load has to fully download before it can
+// render anything. 1400px is plenty for a reference image.
+function blobToPngDataUrl(blob, maxDimension = 1400) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(blob);
     img.onload = () => {
+      let { naturalWidth: w, naturalHeight: h } = img;
+      if (w > maxDimension || h > maxDimension) {
+        const scale = maxDimension / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
       const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
+      canvas.width = w;
+      canvas.height = h;
       const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0);
+      ctx.drawImage(img, 0, 0, w, h);
       URL.revokeObjectURL(url);
       resolve(canvas.toDataURL("image/png"));
     };
@@ -793,7 +808,7 @@ function ViewablePhoto({ src, name }) {
   );
 }
 
-function ItemModal({ item, isAdmin, onClose, onSave, onStatusChange, onDelete, furnitureTypes, decorTypes, kitchenTypes, customTypes }) {
+function ItemModal({ item, isAdmin, onClose, onSave, onStatusChange, onDelete, furnitureTypes, decorTypes, kitchenTypes, customTypes, rooms, styles }) {
   const [draft, setDraft] = useState(item);
   useEffect(() => setDraft(item), [item.id]);
   const inputStyle = { width: "100%", border: "none", borderRadius: 12, padding: "11px 12px", fontSize: 14, fontFamily: "'Plus Jakarta Sans', sans-serif", background: T.field, color: T.ink, boxSizing: "border-box" };
@@ -833,13 +848,13 @@ function ItemModal({ item, isAdmin, onClose, onSave, onStatusChange, onDelete, f
               <div>
                 <span style={labelStyle}>Style</span>
                 <select value={draft.style} onChange={(e) => setDraft({ ...draft, style: e.target.value })} style={inputStyle}>
-                  {STYLE_NAMES.map((s) => <option key={s}>{s}</option>)}
+                  {styles.map((s) => <option key={s}>{s}</option>)}
                 </select>
               </div>
               <div style={{ gridColumn: "1 / -1" }}>
                 <span style={labelStyle}>Room</span>
                 <select value={draft.room} onChange={(e) => setDraft({ ...draft, room: e.target.value })} style={inputStyle}>
-                  {ROOMS.map((r) => <option key={r}>{r}</option>)}
+                  {rooms.map((r) => <option key={r}>{r}</option>)}
                 </select>
               </div>
             </div>
@@ -891,7 +906,7 @@ function ItemModal({ item, isAdmin, onClose, onSave, onStatusChange, onDelete, f
 }
 
 /* ============================== ADD ITEM MODAL ============================== */
-function AddItemModal({ onClose, onCreate, furnitureTypes, decorTypes, kitchenTypes, customTypes }) {
+function AddItemModal({ onClose, onCreate, furnitureTypes, decorTypes, kitchenTypes, customTypes, rooms, styles }) {
   const [draft, setDraft] = useState({ name: "", type: TYPE_NAMES[0], typeGroup: CATEGORY_TYPES[0].group, room: ROOMS[0], style: STYLE_NAMES[0], status: "not-started", photo: null, description: "" });
   const inputStyle = { width: "100%", border: "none", borderRadius: 12, padding: "11px 12px", fontSize: 14, fontFamily: "'Plus Jakarta Sans', sans-serif", background: T.field, color: T.ink, boxSizing: "border-box" };
   const labelStyle = { fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: T.inkSoft, marginBottom: 7, display: "block" };
@@ -935,13 +950,13 @@ function AddItemModal({ onClose, onCreate, furnitureTypes, decorTypes, kitchenTy
           <div>
             <span style={labelStyle}>Style</span>
             <select value={draft.style} onChange={(e) => setDraft({ ...draft, style: e.target.value })} style={inputStyle}>
-              {STYLE_NAMES.map((s) => <option key={s}>{s}</option>)}
+              {styles.map((s) => <option key={s}>{s}</option>)}
             </select>
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
             <span style={labelStyle}>Room</span>
             <select value={draft.room} onChange={(e) => setDraft({ ...draft, room: e.target.value })} style={inputStyle}>
-              {ROOMS.map((r) => <option key={r}>{r}</option>)}
+              {rooms.map((r) => <option key={r}>{r}</option>)}
             </select>
           </div>
         </div>
@@ -1053,7 +1068,7 @@ function SortMenu({ organizeKey, specificValue, onPick, organizeOptions, isAdmin
                       {v}
                     </button>
                   ))}
-                  {isAdmin && onAddCategory && ["furniture", "decor", "kitchen"].includes(o.key) && (
+                  {isAdmin && onAddCategory && o.key !== "all" && (
                     addingTo === o.key ? (
                       <div style={{ display: "flex", gap: 6, padding: "6px 4px" }}>
                         <input
@@ -1197,10 +1212,11 @@ export default function ModelingLibraryApp() {
   const role = session ? roleForEmail(session.user.email) : null;
   const isAdmin = role === "admin";
 
-  // Initial load from Supabase — runs once signed in. If the table is empty
-  // (first run ever), seed it once. If it already has data, an admin session
-  // also reconciles it: removes retired item types, and backfills any whole
-  // category that's missing (e.g. a batch insert that failed partway through).
+  // Initial load — always fetch and show data immediately, never blocked on
+  // cleanup work. Admin sessions also kick off a background reconciliation
+  // pass (see runReconciliation below) that patches things up quietly
+  // without ever replacing the whole list — that's what previously caused
+  // a just-added photo to vanish if you kept working while it ran.
   useEffect(() => {
     if (supabaseConfigError) {
       setSyncError(supabaseConfigError);
@@ -1211,7 +1227,7 @@ export default function ModelingLibraryApp() {
     if (!session) return; // wait until signed in
     (async () => {
       try {
-        let data = await fetchAllItems();
+        const data = await fetchAllItems();
 
         if ((!data || data.length === 0) && isAdmin) {
           const seed = buildSeedItems();
@@ -1222,96 +1238,110 @@ export default function ModelingLibraryApp() {
             const { error: insertError } = await supabase.from("items").insert(rows.slice(i, i + chunkSize));
             if (insertError) throw insertError;
           }
-        } else if (isAdmin) {
-          // Remove retired item types that may already exist from an earlier seed.
-          const { error: delError } = await supabase.from("items").delete().eq("type", "Kitchen Island");
-          if (delError) console.error("Cleanup delete failed:", delError);
-          data = data.filter((row) => row.type !== "Kitchen Island");
-
-          // Backfill any category that's entirely missing (e.g. an insert batch that
-          // failed partway through when the table was first seeded).
-          const seed = buildSeedItems();
-          const presentTypes = new Set(data.map((row) => row.type));
-          const missing = seed.filter((item) => !presentTypes.has(item.type));
-          if (missing.length > 0) {
-            const rows = missing.map(itemToRow);
-            const chunkSize = 500;
-            for (let i = 0; i < rows.length; i += chunkSize) {
-              const { error: insertError } = await supabase.from("items").insert(rows.slice(i, i + chunkSize));
-              if (insertError) console.error("Backfill insert failed:", insertError);
-            }
-            data = [...data, ...missing.map(itemToRow)];
-          }
-
-          setItems(data.map(rowToItem));
-
-          // Clean up duplicates that may have piled up from an earlier bug where
-          // a truncated read caused this same reconciliation step to repeatedly
-          // re-insert items it mistakenly thought were missing.
-          const seenKeys = new Map();
-          const duplicateIds = [];
-          for (const row of [...data].sort((a, b) => (a.created_at || 0) - (b.created_at || 0))) {
-            const key = `${row.name}|${row.type}|${row.style}`;
-            if (seenKeys.has(key)) {
-              // Prefer keeping whichever copy has actual progress on it.
-              const keptId = seenKeys.get(key);
-              const kept = data.find((r) => r.id === keptId);
-              if (kept && kept.status === "not-started" && row.status !== "not-started") {
-                seenKeys.set(key, row.id);
-                duplicateIds.push(keptId);
-              } else {
-                duplicateIds.push(row.id);
-              }
-            } else {
-              seenKeys.set(key, row.id);
-            }
-          }
-          if (duplicateIds.length > 0) {
-            console.log(`Cleaning up ${duplicateIds.length} duplicate item(s)…`);
-            const deleteChunkSize = 150; // keep each request's ID list well under URL length limits
-            let removed = 0;
-            for (let i = 0; i < duplicateIds.length; i += deleteChunkSize) {
-              const chunk = duplicateIds.slice(i, i + deleteChunkSize);
-              const { error: dedupError } = await supabase.from("items").delete().in("id", chunk);
-              if (dedupError) {
-                console.error("Duplicate cleanup failed on a chunk:", dedupError);
-              } else {
-                removed += chunk.length;
-                setItems((prev) => prev.filter((i) => !chunk.includes(i.id)));
-              }
-            }
-            console.log(`Removed ${removed} of ${duplicateIds.length} duplicate item(s).`);
-            if (removed < duplicateIds.length) {
-              setSyncError(`Cleaned up ${removed} duplicate items, but ${duplicateIds.length - removed} couldn't be removed — try reloading as admin again.`);
-            }
-          }
-
-          // Give any item that's never had a custom position a baseline order
-          // (alphabetical, matching how they looked before drag-to-reorder existed)
-          // so dragging has a sensible starting point instead of items with no
-          // order sorting unpredictably.
-          const stillMissingOrder = data.filter((row) => row.sort_order == null && !duplicateIds.includes(row.id));
-          if (stillMissingOrder.length > 0) {
-            const alphabetical = [...stillMissingOrder].sort((a, b) => a.name.localeCompare(b.name));
-            const orderUpdates = alphabetical.map((row, idx) => ({ id: row.id, sort_order: idx }));
-            for (let i = 0; i < orderUpdates.length; i += 150) {
-              const chunk = orderUpdates.slice(i, i + 150);
-              await Promise.all(chunk.map((u) => supabase.from("items").update({ sort_order: u.sort_order }).eq("id", u.id)));
-            }
-            const orderMap = new Map(orderUpdates.map((u) => [u.id, u.sort_order]));
-            setItems((prev) => prev.map((i) => (orderMap.has(i.id) ? { ...i, sortOrder: orderMap.get(i.id) } : i)));
-          }
-        } else {
-          setItems((data || []).map(rowToItem));
+          setLoaded(true);
+          await supabase.from("app_settings").upsert({ key: "reconciliation_version", value: RECONCILIATION_VERSION });
+          return;
         }
+
+        setItems(data.map(rowToItem));
+        setLoaded(true);
+        if (isAdmin) runReconciliation(data); // fire-and-forget — never blocks the UI
       } catch (e) {
         console.error("Supabase load failed:", e);
         setSyncError("Couldn't connect to the database — showing a local, unsaved copy instead.");
         setItems(buildSeedItems());
+        setLoaded(true);
       }
-      setLoaded(true);
     })();
   }, [session]);
+
+  // Background cleanup — only actually does work if the database hasn't
+  // already been reconciled at the current version (a flag in app_settings),
+  // so on every normal day-to-day load this is a single cheap check and
+  // nothing more. Every update below is targeted (add these specific rows,
+  // remove these specific ids, patch these specific fields) — never a
+  // wholesale replace of the item list, so it can never clobber something
+  // you're actively editing while it runs.
+  const runReconciliation = useCallback(async (data) => {
+    try {
+      const { data: versionRow } = await supabase.from("app_settings").select("value").eq("key", "reconciliation_version").maybeSingle();
+      if (versionRow && versionRow.value === RECONCILIATION_VERSION) return; // already clean — nothing to do
+
+      // Remove retired item types that may exist from an earlier seed.
+      const retired = data.filter((row) => row.type === "Kitchen Island");
+      if (retired.length > 0) {
+        const retiredIds = retired.map((r) => r.id);
+        const { error } = await supabase.from("items").delete().in("id", retiredIds);
+        if (!error) setItems((prev) => prev.filter((i) => !retiredIds.includes(i.id)));
+      }
+      const cleanedData = data.filter((row) => row.type !== "Kitchen Island");
+
+      // Backfill any category that's entirely missing.
+      const seed = buildSeedItems();
+      const presentTypes = new Set(cleanedData.map((row) => row.type));
+      const missing = seed.filter((item) => !presentTypes.has(item.type));
+      if (missing.length > 0) {
+        const rows = missing.map(itemToRow);
+        for (let i = 0; i < rows.length; i += 500) {
+          const { error } = await supabase.from("items").insert(rows.slice(i, i + 500));
+          if (error) console.error("Backfill insert failed:", error);
+        }
+        setItems((prev) => [...prev, ...missing]);
+      }
+      const fullData = [...cleanedData, ...missing.map(itemToRow)];
+
+      // Clean up duplicates from an earlier bug where a truncated read caused
+      // this same step to repeatedly re-insert items it thought were missing.
+      const seenKeys = new Map();
+      const duplicateIds = [];
+      for (const row of [...fullData].sort((a, b) => (a.created_at || 0) - (b.created_at || 0))) {
+        const key = `${row.name}|${row.type}|${row.style}`;
+        if (seenKeys.has(key)) {
+          const keptId = seenKeys.get(key);
+          const kept = fullData.find((r) => r.id === keptId);
+          if (kept && kept.status === "not-started" && row.status !== "not-started") {
+            seenKeys.set(key, row.id);
+            duplicateIds.push(keptId);
+          } else {
+            duplicateIds.push(row.id);
+          }
+        } else {
+          seenKeys.set(key, row.id);
+        }
+      }
+      if (duplicateIds.length > 0) {
+        let removed = 0;
+        for (let i = 0; i < duplicateIds.length; i += 150) {
+          const chunk = duplicateIds.slice(i, i + 150);
+          const { error } = await supabase.from("items").delete().in("id", chunk);
+          if (!error) {
+            removed += chunk.length;
+            setItems((prev) => prev.filter((i) => !chunk.includes(i.id)));
+          }
+        }
+        if (removed < duplicateIds.length) {
+          setSyncError(`Cleaned up ${removed} duplicate items, but ${duplicateIds.length - removed} couldn't be removed.`);
+        }
+      }
+
+      // Give any item that's never had a custom position a baseline order.
+      const stillMissingOrder = fullData.filter((row) => row.sort_order == null && !duplicateIds.includes(row.id));
+      if (stillMissingOrder.length > 0) {
+        const alphabetical = [...stillMissingOrder].sort((a, b) => a.name.localeCompare(b.name));
+        const orderUpdates = alphabetical.map((row, idx) => ({ id: row.id, sort_order: idx }));
+        for (let i = 0; i < orderUpdates.length; i += 150) {
+          const chunk = orderUpdates.slice(i, i + 150);
+          await Promise.all(chunk.map((u) => supabase.from("items").update({ sort_order: u.sort_order }).eq("id", u.id)));
+        }
+        const orderMap = new Map(orderUpdates.map((u) => [u.id, u.sort_order]));
+        setItems((prev) => prev.map((i) => (orderMap.has(i.id) ? { ...i, sortOrder: orderMap.get(i.id) } : i)));
+      }
+
+      await supabase.from("app_settings").upsert({ key: "reconciliation_version", value: RECONCILIATION_VERSION });
+    } catch (e) {
+      console.error("Background reconciliation failed:", e);
+    }
+  }, []);
 
   // Live sync — when anyone on any account changes an item, everyone else sees it immediately.
   useEffect(() => {
@@ -1380,7 +1410,8 @@ export default function ModelingLibraryApp() {
   }, [session]);
 
   const addCategory = useCallback(async (groupKey, name) => {
-    const groupName = groupKey === "furniture" ? "Furniture" : groupKey === "decor" ? "Decor" : "Kitchen";
+    const groupNameMap = { furniture: "Furniture", decor: "Decor", kitchen: "Kitchen", room: "Room", style: "Style" };
+    const groupName = groupNameMap[groupKey] || "Furniture";
     const newType = { id: uid("cat"), name: name.trim(), group_name: groupName, default_room: groupName === "Kitchen" ? "Kitchen" : "Living Room", created_at: Date.now() };
     setCustomTypes((prev) => [...prev, newType]);
     const { error } = await supabase.from("custom_types").insert([newType]);
@@ -1508,16 +1539,18 @@ export default function ModelingLibraryApp() {
   const furnitureTypes = useMemo(() => [...FURNITURE_TYPES, ...customTypes.filter((c) => c.group_name === "Furniture").map((c) => c.name)], [customTypes]);
   const decorTypes = useMemo(() => [...DECOR_TYPES, ...customTypes.filter((c) => c.group_name === "Decor").map((c) => c.name)], [customTypes]);
   const kitchenTypes = useMemo(() => [...KITCHEN_TYPES, ...customTypes.filter((c) => c.group_name === "Kitchen").map((c) => c.name)], [customTypes]);
-  const allTypeNames = useMemo(() => [...TYPE_NAMES, ...customTypes.map((c) => c.name)], [customTypes]);
+  const rooms = useMemo(() => [...ROOMS, ...customTypes.filter((c) => c.group_name === "Room").map((c) => c.name)], [customTypes]);
+  const styles = useMemo(() => [...STYLE_NAMES, ...customTypes.filter((c) => c.group_name === "Style").map((c) => c.name)], [customTypes]);
+  const allTypeNames = useMemo(() => [...TYPE_NAMES, ...customTypes.filter((c) => ["Furniture", "Decor", "Kitchen"].includes(c.group_name)).map((c) => c.name)], [customTypes]);
 
   const organizeOptions = useMemo(() => [
     { key: "all", label: "All Items", values: allTypeNames, field: "type" },
     { key: "furniture", label: "Furniture", values: furnitureTypes, field: "type" },
     { key: "decor", label: "Decor", values: decorTypes, field: "type" },
     { key: "kitchen", label: "Kitchen System", values: kitchenTypes, field: "type" },
-    { key: "room", label: "Room", values: ROOMS, field: "room" },
-    { key: "style", label: "Style", values: STYLE_NAMES, field: "style" },
-  ], [allTypeNames, furnitureTypes, decorTypes, kitchenTypes]);
+    { key: "room", label: "Room", values: rooms, field: "room" },
+    { key: "style", label: "Style", values: styles, field: "style" },
+  ], [allTypeNames, furnitureTypes, decorTypes, kitchenTypes, rooms, styles]);
 
   const organizeMode = organizeOptions.find((o) => o.key === organizeKey);
 
@@ -1798,9 +1831,9 @@ export default function ModelingLibraryApp() {
       </div>
 
       {openItem && <ItemModal item={openItem} isAdmin={isAdmin} onClose={() => setOpenItemId(null)} onSave={saveItem} onStatusChange={setStatus} onDelete={deleteItem}
-        furnitureTypes={furnitureTypes} decorTypes={decorTypes} kitchenTypes={kitchenTypes} customTypes={customTypes} />}
+        furnitureTypes={furnitureTypes} decorTypes={decorTypes} kitchenTypes={kitchenTypes} customTypes={customTypes} rooms={rooms} styles={styles} />}
       {isAdmin && showAdd && <AddItemModal onClose={() => setShowAdd(false)} onCreate={createItem}
-        furnitureTypes={furnitureTypes} decorTypes={decorTypes} kitchenTypes={kitchenTypes} customTypes={customTypes} />}
+        furnitureTypes={furnitureTypes} decorTypes={decorTypes} kitchenTypes={kitchenTypes} customTypes={customTypes} rooms={rooms} styles={styles} />}
     </div>
   );
 }
