@@ -55,7 +55,7 @@ export function rowToItem(row) {
     room: row.room,
     style: row.style,
     status: row.status,
-    photo: row.photo,
+    photo: row.photo ?? null,
     description: row.description || "",
     sortOrder: row.sort_order,
     createdAt: row.created_at,

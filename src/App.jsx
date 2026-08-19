@@ -216,14 +216,35 @@ function uid(prefix) {
 // Bump this only when buildSeedItems() changes in a way that needs a fresh
 // reconciliation pass (new category, structural fix, etc). Otherwise the
 // background cleanup below skips itself entirely on every normal load.
-const RECONCILIATION_VERSION = "v1";
+const RECONCILIATION_VERSION = "v2";
 
-async function fetchAllItems() {
+const ITEM_META_COLUMNS = "id,name,type,type_group,room,style,status,description,sort_order,created_at,updated_at";
+
+// Fetches everything EXCEPT photos — the list can render and become
+// interactive immediately from this, without waiting for every photo in the
+// whole library to download first.
+async function fetchAllItemsMeta() {
   const pageSize = 1000;
   let all = [];
   let from = 0;
   while (true) {
-    const { data, error } = await supabase.from("items").select("*").range(from, from + pageSize - 1);
+    const { data, error } = await supabase.from("items").select(ITEM_META_COLUMNS).range(from, from + pageSize - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
+// Fetches just id + photo, for filling photos in after the list is already visible.
+async function fetchAllPhotos() {
+  const pageSize = 500; // smaller pages — photo payloads are much heavier per row
+  let all = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase.from("items").select("id,photo").range(from, from + pageSize - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
     all = all.concat(data);
@@ -535,6 +556,21 @@ function blobToPngDataUrl(blob, maxDimension = 1400) {
     img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
     img.src = url;
   });
+}
+
+// Shrinks an already-stored photo if it's still oversized from before the
+// upload cap existed. Returns null if it's already small enough to leave alone.
+async function shrinkPhotoIfOversized(dataUrl, maxBytes = 350000, maxDimension = 1400) {
+  if (!dataUrl || dataUrl.length <= maxBytes) return null;
+  try {
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const resized = await blobToPngDataUrl(blob, maxDimension);
+    return resized.length < dataUrl.length ? resized : null;
+  } catch (e) {
+    console.error("Photo shrink failed:", e);
+    return null;
+  }
 }
 
 function extractPastedImage(clipboardData) {
@@ -1212,8 +1248,9 @@ export default function ModelingLibraryApp() {
   const role = session ? roleForEmail(session.user.email) : null;
   const isAdmin = role === "admin";
 
-  // Initial load — always fetch and show data immediately, never blocked on
-  // cleanup work. Admin sessions also kick off a background reconciliation
+  // Initial load — fetch everything except photos first, so the list renders
+  // and becomes interactive right away. Photos fill in shortly after, in the
+  // background. Admin sessions also kick off a background reconciliation
   // pass (see runReconciliation below) that patches things up quietly
   // without ever replacing the whole list — that's what previously caused
   // a just-added photo to vanish if you kept working while it ran.
@@ -1227,9 +1264,9 @@ export default function ModelingLibraryApp() {
     if (!session) return; // wait until signed in
     (async () => {
       try {
-        const data = await fetchAllItems();
+        const metaData = await fetchAllItemsMeta();
 
-        if ((!data || data.length === 0) && isAdmin) {
+        if ((!metaData || metaData.length === 0) && isAdmin) {
           const seed = buildSeedItems();
           setItems(seed);
           const rows = seed.map(itemToRow);
@@ -1243,9 +1280,10 @@ export default function ModelingLibraryApp() {
           return;
         }
 
-        setItems(data.map(rowToItem));
+        setItems(metaData.map((row) => ({ ...rowToItem(row), photo: null })));
         setLoaded(true);
-        if (isAdmin) runReconciliation(data); // fire-and-forget — never blocks the UI
+        loadPhotosInBackground(); // fire-and-forget — fills photos in as they arrive
+        if (isAdmin) runReconciliation(metaData); // fire-and-forget — never blocks the UI
       } catch (e) {
         console.error("Supabase load failed:", e);
         setSyncError("Couldn't connect to the database — showing a local, unsaved copy instead.");
@@ -1254,6 +1292,19 @@ export default function ModelingLibraryApp() {
       }
     })();
   }, [session]);
+
+  // Fills photos in after the fast metadata-only load — everyone (admin and
+  // modeler) gets this, since everyone wants to see thumbnails, just not at
+  // the cost of blocking the initial render.
+  const loadPhotosInBackground = useCallback(async () => {
+    try {
+      const photos = await fetchAllPhotos();
+      const photoMap = new Map(photos.map((p) => [p.id, p.photo]));
+      setItems((prev) => prev.map((i) => (photoMap.has(i.id) ? { ...i, photo: photoMap.get(i.id) ?? null } : i)));
+    } catch (e) {
+      console.error("Background photo load failed:", e);
+    }
+  }, []);
 
   // Background cleanup — only actually does work if the database hasn't
   // already been reconciled at the current version (a flag in app_settings),
@@ -1335,6 +1386,30 @@ export default function ModelingLibraryApp() {
         }
         const orderMap = new Map(orderUpdates.map((u) => [u.id, u.sort_order]));
         setItems((prev) => prev.map((i) => (orderMap.has(i.id) ? { ...i, sortOrder: orderMap.get(i.id) } : i)));
+      }
+
+      // Shrink any already-stored photo that's still oversized from before the
+      // upload cap existed — this is what actually keeps every page load fast
+      // long-term, not just capping new uploads going forward. Fetched
+      // separately here since the fast metadata-only load no longer carries
+      // photo data at all.
+      const validIds = new Set(fullData.filter((row) => !duplicateIds.includes(row.id)).map((row) => row.id));
+      const allPhotos = await fetchAllPhotos();
+      const oversizedPhotos = allPhotos.filter((row) => row.photo && row.photo.length > 350000 && validIds.has(row.id));
+      if (oversizedPhotos.length > 0) {
+        console.log(`Shrinking ${oversizedPhotos.length} oversized photo(s)…`);
+        const batchSize = 4; // a few at a time — decoding/re-encoding images isn't free
+        for (let i = 0; i < oversizedPhotos.length; i += batchSize) {
+          const batch = oversizedPhotos.slice(i, i + batchSize);
+          await Promise.all(batch.map(async (row) => {
+            const shrunk = await shrinkPhotoIfOversized(row.photo);
+            if (shrunk) {
+              const { error } = await supabase.from("items").update({ photo: shrunk }).eq("id", row.id);
+              if (!error) setItems((prev) => prev.map((i) => (i.id === row.id ? { ...i, photo: shrunk } : i)));
+            }
+          }));
+        }
+        console.log("Finished shrinking oversized photos.");
       }
 
       await supabase.from("app_settings").upsert({ key: "reconciliation_version", value: RECONCILIATION_VERSION });
@@ -1608,7 +1683,7 @@ export default function ModelingLibraryApp() {
 
   if (!items) {
     return (
-      <div className="sd-loading" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 420, fontFamily: "'Plus Jakarta Sans', sans-serif", color: T.inkSoft }}>
+      <div className="sd-loading" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", fontFamily: "'Plus Jakarta Sans', sans-serif", color: T.inkSoft, background: T.paperDeep }}>
         <Loader2 className="spin" size={18} style={{ marginRight: 8 }} /> Loading library…
       </div>
     );
