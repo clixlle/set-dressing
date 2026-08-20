@@ -1416,6 +1416,42 @@ export default function ModelingLibraryApp() {
     })();
   }, [session]);
 
+  // Reliable live sync via polling — plain HTTP requests, no WebSocket
+  // involved at all, so it works regardless of what's blocking Realtime on
+  // any given browser/network. Checks for changes every few seconds and
+  // merges them in without ever wiping local-only data (photo/thumbnail
+  // aren't part of this fetch) or anything currently being edited.
+  useEffect(() => {
+    if (supabaseConfigError || !session) return;
+    const poll = async () => {
+      try {
+        const metaData = await fetchAllItemsMeta();
+        const metaMap = new Map(metaData.map((row) => [row.id, row]));
+        let hasNewItems = false;
+        setItems((prev) => {
+          if (!prev) return prev;
+          const next = [];
+          for (const item of prev) {
+            const row = metaMap.get(item.id);
+            if (!row) continue; // deleted elsewhere
+            metaMap.delete(item.id);
+            next.push({ ...rowToItem(row), photo: item.photo, thumbnail: item.thumbnail });
+          }
+          for (const row of metaMap.values()) {
+            hasNewItems = true;
+            next.push({ ...rowToItem(row), photo: null, thumbnail: null }); // created elsewhere
+          }
+          return next;
+        });
+        if (hasNewItems) loadPhotosInBackground(); // pull thumbnails for whatever's new
+      } catch (e) {
+        console.error("Poll failed:", e);
+      }
+    };
+    const interval = setInterval(poll, 6000);
+    return () => clearInterval(interval);
+  }, [session]);
+
   // Fills row thumbnails in after the fast metadata-only load — small,
   // compressed images, not the full-quality photos (those load on-demand
   // only when an item is actually opened — see fetchItemPhoto).
