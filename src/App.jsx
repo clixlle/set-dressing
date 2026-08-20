@@ -225,7 +225,7 @@ const RECONCILIATION_VERSION = "v3";
 // page reload picks up any changes made elsewhere. Flip this back on once
 // the underlying connection issue is confirmed fixed (e.g. after checking
 // with Supabase whether Realtime is enabled/reachable for this project).
-const REALTIME_ENABLED = false;
+const REALTIME_ENABLED = true;
 
 const ITEM_META_COLUMNS = "id,name,type,type_group,room,style,status,description,sort_order,created_at,updated_at";
 
@@ -737,8 +737,10 @@ function PhotoField({ src, fullSrc, onUpload, onDelete, name }) {
           cursor: "pointer", marginBottom: 12, position: "relative", outline: "none",
         }}
       >
-        {src ? (
-          <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        {fullSrc ? (
+          <img src={fullSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : src ? (
+          <Loader2 className="spin" size={28} color={T.inkSoft} />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, color: T.inkSoft, textAlign: "center", padding: 12 }}>
             <Camera size={40} strokeWidth={1.5} />
@@ -902,22 +904,33 @@ function ReadOnlyField({ label, value }) {
 function ViewablePhoto({ src, fullSrc, name }) {
   const [open, setOpen] = useState(false);
   if (!src) return null;
+  const ready = !!fullSrc;
   return (
     <>
       <div style={{ marginBottom: 18 }}>
-        <img
-          src={src} alt="" onClick={() => setOpen(true)}
-          style={{ width: "100%", aspectRatio: "1 / 1", maxHeight: 280, objectFit: "cover", borderRadius: 18, cursor: "zoom-in" }}
-        />
-        <button onClick={() => downloadPhoto(fullSrc || src, name)} disabled={!fullSrc} style={{
-          display: "flex", alignItems: "center", gap: 6, background: T.cardAlt, color: fullSrc ? T.ink : T.inkSoft, border: "none",
-          borderRadius: 999, padding: "8px 14px", cursor: fullSrc ? "pointer" : "default", fontSize: 12.5, fontWeight: 700, marginTop: 10,
-          opacity: fullSrc ? 1 : 0.6,
-        }} title={fullSrc ? undefined : "Full-quality photo is still loading…"}>
+        <div
+          onClick={() => ready && setOpen(true)}
+          style={{
+            width: "100%", aspectRatio: "1 / 1", maxHeight: 280, borderRadius: 18, overflow: "hidden",
+            background: T.field, display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: ready ? "zoom-in" : "default",
+          }}
+        >
+          {ready ? (
+            <img src={fullSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ) : (
+            <Loader2 className="spin" size={28} color={T.inkSoft} />
+          )}
+        </div>
+        <button onClick={() => downloadPhoto(fullSrc, name)} disabled={!ready} style={{
+          display: "flex", alignItems: "center", gap: 6, background: T.cardAlt, color: ready ? T.ink : T.inkSoft, border: "none",
+          borderRadius: 999, padding: "8px 14px", cursor: ready ? "pointer" : "default", fontSize: 12.5, fontWeight: 700, marginTop: 10,
+          opacity: ready ? 1 : 0.6,
+        }} title={ready ? undefined : "Full-quality photo is still loading…"}>
           <Download size={13} /> Download photo
         </button>
       </div>
-      {open && (
+      {open && ready && (
         <div
           onClick={() => setOpen(false)}
           style={{
@@ -931,7 +944,7 @@ function ViewablePhoto({ src, fullSrc, name }) {
           }}>
             <X size={20} color="#fff" />
           </button>
-          <img src={fullSrc || src} alt="" style={{ maxWidth: "92vw", maxHeight: "88vh", objectFit: "contain", borderRadius: 12 }} onClick={(e) => e.stopPropagation()} />
+          <img src={fullSrc} alt="" style={{ maxWidth: "92vw", maxHeight: "88vh", objectFit: "contain", borderRadius: 12 }} onClick={(e) => e.stopPropagation()} />
         </div>
       )}
     </>
@@ -1323,6 +1336,7 @@ export default function ModelingLibraryApp() {
   const [showAdd, setShowAdd] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
   const [draggedItemId, setDraggedItemId] = useState(null);
+  const realtimeFailureCount = useRef(0);
   const [customTypes, setCustomTypes] = useState([]);
   const [sectionNotes, setSectionNotes] = useState({});
   const [editingNoteFor, setEditingNoteFor] = useState("");
@@ -1576,6 +1590,8 @@ export default function ModelingLibraryApp() {
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           console.error(`Realtime (items) couldn't connect (${status}) — live sync is off for this session; reload to see others' changes.`);
           supabase.removeChannel(channel);
+          realtimeFailureCount.current += 1;
+          if (realtimeFailureCount.current >= 3) supabase.realtime.disconnect();
         }
       });
     return () => { supabase.removeChannel(channel); };
@@ -1615,6 +1631,8 @@ export default function ModelingLibraryApp() {
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           console.error(`Realtime (custom_types) couldn't connect (${status}) — giving up instead of retrying forever.`);
           supabase.removeChannel(typesChannel);
+          realtimeFailureCount.current += 1;
+          if (realtimeFailureCount.current >= 3) supabase.realtime.disconnect();
         }
       });
 
@@ -1633,6 +1651,8 @@ export default function ModelingLibraryApp() {
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           console.error(`Realtime (app_settings) couldn't connect (${status}) — giving up instead of retrying forever.`);
           supabase.removeChannel(settingsChannel);
+          realtimeFailureCount.current += 1;
+          if (realtimeFailureCount.current >= 3) supabase.realtime.disconnect();
         }
       });
 
