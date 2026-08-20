@@ -954,6 +954,14 @@ function ViewablePhoto({ src, fullSrc, name }) {
 function ItemModal({ item, isAdmin, onClose, onSave, onStatusChange, onDelete, furnitureTypes, decorTypes, kitchenTypes, customTypes, rooms, styles }) {
   const [draft, setDraft] = useState(item);
   useEffect(() => setDraft(item), [item.id]);
+  // The full-quality photo is fetched on demand after the modal is already
+  // open (see ensureFullPhotoLoaded) — this lets it flow in once it arrives,
+  // without resetting anything else the admin might be mid-editing. Without
+  // this, the photo would only ever show up after closing and reopening.
+  useEffect(() => {
+    if (item.photo && !draft.photo) setDraft((d) => ({ ...d, photo: item.photo }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.photo]);
   const inputStyle = { width: "100%", border: "none", borderRadius: 12, padding: "11px 12px", fontSize: 14, fontFamily: "'Plus Jakarta Sans', sans-serif", background: T.field, color: T.ink, boxSizing: "border-box" };
   const labelStyle = { fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: T.inkSoft, marginBottom: 7, display: "block" };
 
