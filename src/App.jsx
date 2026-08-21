@@ -239,6 +239,20 @@ function withTimeout(promise, ms, label = "This") {
   ]);
 }
 
+// Wraps a write so a stale/expired session (e.g. after the tab sat
+// backgrounded for a while and missed its auto-refresh window) doesn't just
+// fail outright — this refreshes the session once and retries before
+// actually giving up. `operation` should be a function returning a
+// Supabase response ({ error }).
+async function withAuthRetry(operation) {
+  let result = await operation();
+  if (result.error) {
+    const { error: refreshError } = await supabase.auth.refreshSession();
+    if (!refreshError) result = await operation();
+  }
+  return result;
+}
+
 // Fetches everything EXCEPT photos — the list can render and become
 // interactive immediately from this, without waiting for every photo in the
 // whole library to download first.
@@ -1708,7 +1722,7 @@ export default function ModelingLibraryApp() {
     const groupName = groupNameMap[groupKey] || "Furniture";
     const newType = { id: uid("cat"), name: name.trim(), group_name: groupName, default_room: groupName === "Kitchen" ? "Kitchen" : "Living Room", created_at: Date.now() };
     setCustomTypes((prev) => [...prev, newType]);
-    const { error } = await supabase.from("custom_types").insert([newType]);
+    const { error } = await withAuthRetry(() => supabase.from("custom_types").insert([newType]));
     if (error) {
       console.error("Add category failed:", error);
       setCustomTypes((prev) => prev.filter((c) => c.id !== newType.id));
@@ -1722,7 +1736,7 @@ export default function ModelingLibraryApp() {
       previousValue = prev[sectionKey];
       return { ...prev, [sectionKey]: text };
     });
-    const { error } = await supabase.from("app_settings").upsert({ key: `note_${sectionKey}`, value: text });
+    const { error } = await withAuthRetry(() => supabase.from("app_settings").upsert({ key: `note_${sectionKey}`, value: text }));
     if (error) {
       console.error("Save note failed:", error);
       setSectionNotes((prev) => ({ ...prev, [sectionKey]: previousValue }));
@@ -1738,7 +1752,7 @@ export default function ModelingLibraryApp() {
       previousValue = prev[categoryValue];
       return { ...prev, [categoryValue]: text };
     });
-    const { error } = await supabase.from("app_settings").upsert({ key: `catnote_${categoryValue}`, value: text });
+    const { error } = await withAuthRetry(() => supabase.from("app_settings").upsert({ key: `catnote_${categoryValue}`, value: text }));
     if (error) {
       console.error("Save category note failed:", error);
       setCategoryNotes((prev) => ({ ...prev, [categoryValue]: previousValue }));
@@ -1755,11 +1769,11 @@ export default function ModelingLibraryApp() {
       previous = prev;
       return prev.map((i) => (i.id === id ? { ...i, status, updatedAt } : i));
     });
-    const { error } = await supabase.from("items").update({ status, updated_at: updatedAt }).eq("id", id);
+    const { error } = await withAuthRetry(() => supabase.from("items").update({ status, updated_at: updatedAt }).eq("id", id));
     if (error) {
       console.error("Status update failed:", error);
       setItems(previous); // the write didn't actually happen — don't leave the UI showing otherwise
-      setSyncError("That status change didn't save — please try again.");
+      setSyncError(`That status change didn't save: ${error.message || "unknown error"}`);
     }
   }, []);
 
@@ -1771,11 +1785,11 @@ export default function ModelingLibraryApp() {
       return prev.map((i) => (i.id === updated.id ? withTimestamp : i));
     });
     setOpenItemId(null);
-    const { error } = await supabase.from("items").update(itemToRow(withTimestamp)).eq("id", updated.id);
+    const { error } = await withAuthRetry(() => supabase.from("items").update(itemToRow(withTimestamp)).eq("id", updated.id));
     if (error) {
       console.error("Save failed:", error);
       setItems(previous);
-      setSyncError("That save didn't go through — please reopen the item and try again.");
+      setSyncError(`That save didn't go through: ${error.message || "unknown error"}`);
     }
   }, []);
 
@@ -1786,11 +1800,11 @@ export default function ModelingLibraryApp() {
       return prev.filter((i) => i.id !== id);
     });
     setOpenItemId(null);
-    const { error } = await supabase.from("items").delete().eq("id", id);
+    const { error } = await withAuthRetry(() => supabase.from("items").delete().eq("id", id));
     if (error) {
       console.error("Delete failed:", error);
       setItems(previous);
-      setSyncError("That delete didn't go through — please try again.");
+      setSyncError(`That delete didn't go through: ${error.message || "unknown error"}`);
     }
   }, []);
 
@@ -1814,20 +1828,24 @@ export default function ModelingLibraryApp() {
       return prev.map((i) => (orderMap.has(i.id) ? { ...i, sortOrder: orderMap.get(i.id) } : i));
     });
 
-    const results = await Promise.all(updates.map((u) => supabase.from("items").update({ sort_order: u.sortOrder }).eq("id", u.id)));
+    const results = await Promise.all(updates.map((u) => withAuthRetry(() => supabase.from("items").update({ sort_order: u.sortOrder }).eq("id", u.id))));
     const failed = results.find((r) => r.error);
     if (failed) {
       console.error("Reorder failed:", failed.error);
       setItems(previous);
-      setSyncError("That reorder didn't save — please try again.");
+      setSyncError(`That reorder didn't save: ${failed.error.message || "unknown error"}`);
     }
   }, []);
 
   const createItem = useCallback(async (item) => {
     setItems((prev) => [item, ...prev]);
     setShowAdd(false);
-    const { error } = await supabase.from("items").insert([itemToRow(item)]);
-    if (error) console.error("Create failed:", error);
+    const { error } = await withAuthRetry(() => supabase.from("items").insert([itemToRow(item)]));
+    if (error) {
+      console.error("Create failed:", error);
+      setItems((prev) => prev.filter((i) => i.id !== item.id));
+      setSyncError(`That item didn't save: ${error.message || "unknown error"}`);
+    }
   }, []);
 
   const furnitureTypes = useMemo(() => [...FURNITURE_TYPES, ...customTypes.filter((c) => c.group_name === "Furniture").map((c) => c.name)], [customTypes]);
