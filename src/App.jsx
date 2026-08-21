@@ -1777,6 +1777,19 @@ export default function ModelingLibraryApp() {
     }
   }, []);
 
+  // If the "thumbnail" column doesn't exist yet (migration 011 not run), a
+  // save that includes it would otherwise fail completely — losing the photo
+  // too, not just the thumbnail. This retries without that field so at least
+  // everything else (including the real photo) still saves correctly.
+  const writeItemRow = useCallback(async (row, applyOp) => {
+    let { error } = await withAuthRetry(() => applyOp(row));
+    if (error && /thumbnail/i.test(error.message || "")) {
+      const { thumbnail, ...rowWithoutThumbnail } = row;
+      ({ error } = await withAuthRetry(() => applyOp(rowWithoutThumbnail)));
+    }
+    return { error };
+  }, []);
+
   const saveItem = useCallback(async (updated) => {
     const withTimestamp = { ...updated, updatedAt: Date.now() };
     let previous;
@@ -1785,13 +1798,13 @@ export default function ModelingLibraryApp() {
       return prev.map((i) => (i.id === updated.id ? withTimestamp : i));
     });
     setOpenItemId(null);
-    const { error } = await withAuthRetry(() => supabase.from("items").update(itemToRow(withTimestamp)).eq("id", updated.id));
+    const { error } = await writeItemRow(itemToRow(withTimestamp), (row) => supabase.from("items").update(row).eq("id", updated.id));
     if (error) {
       console.error("Save failed:", error);
       setItems(previous);
       setSyncError(`That save didn't go through: ${error.message || "unknown error"}`);
     }
-  }, []);
+  }, [writeItemRow]);
 
   const deleteItem = useCallback(async (id) => {
     let previous;
@@ -1840,13 +1853,13 @@ export default function ModelingLibraryApp() {
   const createItem = useCallback(async (item) => {
     setItems((prev) => [item, ...prev]);
     setShowAdd(false);
-    const { error } = await withAuthRetry(() => supabase.from("items").insert([itemToRow(item)]));
+    const { error } = await writeItemRow(itemToRow(item), (row) => supabase.from("items").insert([row]));
     if (error) {
       console.error("Create failed:", error);
       setItems((prev) => prev.filter((i) => i.id !== item.id));
       setSyncError(`That item didn't save: ${error.message || "unknown error"}`);
     }
-  }, []);
+  }, [writeItemRow]);
 
   const furnitureTypes = useMemo(() => [...FURNITURE_TYPES, ...customTypes.filter((c) => c.group_name === "Furniture").map((c) => c.name)], [customTypes]);
   const decorTypes = useMemo(() => [...DECOR_TYPES, ...customTypes.filter((c) => c.group_name === "Decor").map((c) => c.name)], [customTypes]);
