@@ -1359,6 +1359,10 @@ export default function ModelingLibraryApp() {
   const [expanded, setExpanded] = useState(new Set());
   const [draggedItemId, setDraggedItemId] = useState(null);
   const realtimeFailureCount = useRef(0);
+  // Tracks items with a write currently in flight (create/save/status/delete/
+  // reorder), so the background poll never overwrites or deletes something
+  // mid-save just because it hasn't landed in the database yet.
+  const pendingWriteIds = useRef(new Set());
   const [customTypes, setCustomTypes] = useState([]);
   const [sectionNotes, setSectionNotes] = useState({});
   const [editingNoteFor, setEditingNoteFor] = useState("");
@@ -1446,8 +1450,16 @@ export default function ModelingLibraryApp() {
           if (!prev) return prev;
           const next = [];
           for (const item of prev) {
+            if (pendingWriteIds.current.has(item.id)) {
+              // A write for this item is still in flight — keep it exactly
+              // as-is rather than overwriting it with (possibly stale) data,
+              // or deleting it just because it hasn't landed in the DB yet.
+              next.push(item);
+              metaMap.delete(item.id);
+              continue;
+            }
             const row = metaMap.get(item.id);
-            if (!row) continue; // deleted elsewhere
+            if (!row) continue; // genuinely deleted elsewhere
             metaMap.delete(item.id);
             next.push({ ...rowToItem(row), photo: item.photo, thumbnail: item.thumbnail });
           }
@@ -1765,11 +1777,13 @@ export default function ModelingLibraryApp() {
   const setStatus = useCallback(async (id, status) => {
     const updatedAt = Date.now();
     let previous;
+    pendingWriteIds.current.add(id);
     setItems((prev) => {
       previous = prev;
       return prev.map((i) => (i.id === id ? { ...i, status, updatedAt } : i));
     });
     const { error } = await withAuthRetry(() => supabase.from("items").update({ status, updated_at: updatedAt }).eq("id", id));
+    pendingWriteIds.current.delete(id);
     if (error) {
       console.error("Status update failed:", error);
       setItems(previous); // the write didn't actually happen — don't leave the UI showing otherwise
@@ -1793,12 +1807,14 @@ export default function ModelingLibraryApp() {
   const saveItem = useCallback(async (updated) => {
     const withTimestamp = { ...updated, updatedAt: Date.now() };
     let previous;
+    pendingWriteIds.current.add(updated.id);
     setItems((prev) => {
       previous = prev;
       return prev.map((i) => (i.id === updated.id ? withTimestamp : i));
     });
     setOpenItemId(null);
     const { error } = await writeItemRow(itemToRow(withTimestamp), (row) => supabase.from("items").update(row).eq("id", updated.id));
+    pendingWriteIds.current.delete(updated.id);
     if (error) {
       console.error("Save failed:", error);
       setItems(previous);
@@ -1808,12 +1824,14 @@ export default function ModelingLibraryApp() {
 
   const deleteItem = useCallback(async (id) => {
     let previous;
+    pendingWriteIds.current.add(id);
     setItems((prev) => {
       previous = prev;
       return prev.filter((i) => i.id !== id);
     });
     setOpenItemId(null);
     const { error } = await withAuthRetry(() => supabase.from("items").delete().eq("id", id));
+    pendingWriteIds.current.delete(id);
     if (error) {
       console.error("Delete failed:", error);
       setItems(previous);
@@ -1835,6 +1853,7 @@ export default function ModelingLibraryApp() {
 
     const updates = reordered.map((item, idx) => ({ id: item.id, sortOrder: idx }));
     let previous;
+    for (const u of updates) pendingWriteIds.current.add(u.id);
     setItems((prev) => {
       previous = prev;
       const orderMap = new Map(updates.map((u) => [u.id, u.sortOrder]));
@@ -1842,6 +1861,7 @@ export default function ModelingLibraryApp() {
     });
 
     const results = await Promise.all(updates.map((u) => withAuthRetry(() => supabase.from("items").update({ sort_order: u.sortOrder }).eq("id", u.id))));
+    for (const u of updates) pendingWriteIds.current.delete(u.id);
     const failed = results.find((r) => r.error);
     if (failed) {
       console.error("Reorder failed:", failed.error);
@@ -1851,9 +1871,11 @@ export default function ModelingLibraryApp() {
   }, []);
 
   const createItem = useCallback(async (item) => {
+    pendingWriteIds.current.add(item.id);
     setItems((prev) => [item, ...prev]);
     setShowAdd(false);
     const { error } = await writeItemRow(itemToRow(item), (row) => supabase.from("items").insert([row]));
+    pendingWriteIds.current.delete(item.id);
     if (error) {
       console.error("Create failed:", error);
       setItems((prev) => prev.filter((i) => i.id !== item.id));
