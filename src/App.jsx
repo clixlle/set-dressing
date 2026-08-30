@@ -416,9 +416,17 @@ const NEW_ROOM_ESSENTIAL_TYPES = [
 ];
 const ELECTRONICS_TYPES = ["Television", "Phone", "Tablet", "Laptop", "Desktop Computer", "Gaming Console", "Smart Speaker"];
 const PLANT_TYPES = PLANT_GROUPS.map((g) => g.type);
-const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), ...PLANT_TYPES, "Miscellaneous", ...KITCHEN_MODULE_TYPES, "Hanging Chair", "Standing Shelf Unit", ...NEW_DECOR_TYPES, ...ARCHITECTURE_TYPES, ...NEW_ROOM_ESSENTIAL_TYPES, ...ELECTRONICS_TYPES];
-const FURNITURE_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Furniture").map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Hanging Chair", "Standing Shelf Unit", ...NEW_ROOM_ESSENTIAL_TYPES, ...ELECTRONICS_TYPES];
-const DECOR_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Decor").map((c) => c.singular), ...PLANT_TYPES, "Miscellaneous", ...NEW_DECOR_TYPES];
+// Retired type names — anything ever removed or renamed goes here so that
+// if a row still exists under the old name (because a migration wasn't run
+// yet, or because the item had progress and a cleanup step deliberately
+// left it alone), it stays visible in "All Items" instead of silently
+// disappearing from the app. Nothing new is ever generated under these —
+// they exist purely so old data can never go invisible.
+const LEGACY_TYPES = ["Mirror", "Plant", "Chair", "Fantasy Decor", "Backsplash Tile", "Stair Tile"];
+
+const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), ...PLANT_TYPES, "Miscellaneous", ...KITCHEN_MODULE_TYPES, "Hanging Chair", "Standing Shelf Unit", ...NEW_DECOR_TYPES, ...ARCHITECTURE_TYPES, ...NEW_ROOM_ESSENTIAL_TYPES, ...ELECTRONICS_TYPES, ...LEGACY_TYPES];
+const FURNITURE_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Furniture").map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Hanging Chair", "Standing Shelf Unit", ...NEW_ROOM_ESSENTIAL_TYPES, ...ELECTRONICS_TYPES, ...LEGACY_TYPES];
+const DECOR_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Decor").map((c) => c.singular), ...PLANT_TYPES, "Miscellaneous", ...NEW_DECOR_TYPES, ...LEGACY_TYPES];
 const MISC_TYPES = ["Miscellaneous"];
 const KITCHEN_TYPES = KITCHEN_MODULE_TYPES;
 
@@ -430,8 +438,8 @@ const KITCHEN_TYPES = KITCHEN_MODULE_TYPES;
 // just keep their own standalone group. Every entry here has 2+ real
 // member types — a category is never created for just one thing.
 const SUPER_CATEGORIES = {
-  "Chairs": ["Accent Chair", "Recliner", "Dining Chair", "Bar Stool", "Hanging Chair", "Patio Chair"],
-  "Mirrors": ["Wall Mirror", "Standing Mirror", "Table Mirror"],
+  "Chairs": ["Accent Chair", "Recliner", "Dining Chair", "Bar Stool", "Hanging Chair", "Patio Chair", "Chair"],
+  "Mirrors": ["Wall Mirror", "Standing Mirror", "Table Mirror", "Mirror"],
   "Tables & Desks": ["Table", "Console Table", "Coffee Table", "Dining Table", "Vanity Table", "Desk", "Patio Table", "Changing Table", "Kids Desk", "Play Table"],
   "Lighting": ["Table Lamp", "Floor Lamp", "Wall Lamp", "Ceiling Light", "Chandelier", "Pendant Light", "Stained Glass Lamp", "LED Lights", "Outdoor Lantern"],
   "Beds": ["Bed", "Bunk Bed", "Toddler Bed", "Crib"],
@@ -583,7 +591,9 @@ function typeGroupFor(typeName, customTypes = []) {
   if (PLANT_TYPES.includes(typeName)) return "Decor";
   if (typeName === "Miscellaneous") return "Misc";
   if (KITCHEN_MODULE_TYPES.includes(typeName)) return "Kitchen";
-  if (typeName === "Hanging Chair" || typeName === "Standing Shelf Unit") return "Furniture";
+  if (typeName === "Hanging Chair" || typeName === "Standing Shelf Unit" || typeName === "Chair") return "Furniture";
+  if (typeName === "Mirror" || typeName === "Plant" || typeName === "Fantasy Decor") return "Decor";
+  if (typeName === "Backsplash Tile" || typeName === "Stair Tile") return "Architecture";
   if (typeName === "Standing Mirror") return "Decor";
   if (NEW_DECOR_TYPES.includes(typeName)) return "Decor";
   if (ARCHITECTURE_TYPES.includes(typeName)) return "Architecture";
@@ -2438,7 +2448,7 @@ export default function ModelingLibraryApp() {
   const furnitureTypes = useMemo(() => [...FURNITURE_TYPES, ...customTypes.filter((c) => c.group_name === "Furniture").map((c) => c.name)], [customTypes]);
   const decorTypes = useMemo(() => [...DECOR_TYPES, ...customTypes.filter((c) => c.group_name === "Decor").map((c) => c.name)], [customTypes]);
   const kitchenTypes = useMemo(() => [...KITCHEN_TYPES, ...customTypes.filter((c) => c.group_name === "Kitchen").map((c) => c.name)], [customTypes]);
-  const architectureTypes = useMemo(() => [...ARCHITECTURE_TYPES, ...customTypes.filter((c) => c.group_name === "Architecture").map((c) => c.name)], [customTypes]);
+  const architectureTypes = useMemo(() => [...ARCHITECTURE_TYPES, ...customTypes.filter((c) => c.group_name === "Architecture").map((c) => c.name), ...LEGACY_TYPES], [customTypes]);
   const rooms = useMemo(() => [...ROOMS, ...customTypes.filter((c) => c.group_name === "Room").map((c) => c.name)], [customTypes]);
   const styles = useMemo(() => [...STYLE_NAMES, ...customTypes.filter((c) => c.group_name === "Style").map((c) => c.name)], [customTypes]);
   const allTypeNames = useMemo(() => [...TYPE_NAMES, ...customTypes.filter((c) => ["Furniture", "Decor", "Kitchen", "Architecture"].includes(c.group_name)).map((c) => c.name)], [customTypes]);
