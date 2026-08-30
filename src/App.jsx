@@ -348,21 +348,35 @@ const MISC_TYPES = ["Miscellaneous"];
 const KITCHEN_TYPES = KITCHEN_MODULE_TYPES;
 
 
-// Groups closely-related object types together under one umbrella when
-// browsing "All Items" — e.g. Wall/Standing/Table Mirror all sit under a
-// single "Mirrors" heading, each still individually expandable underneath.
-// Types not listed here just keep their own standalone group, same as before.
+// Groups closely-related object types together under one umbrella — e.g.
+// Wall/Standing/Table Mirror all sit under a single "Mirrors" heading, each
+// still individually expandable underneath. Types not listed here (mostly
+// Plant and Miscellaneous, which are already broad catch-alls on their own)
+// just keep their own standalone group. Every entry here has 2+ real
+// member types — a category is never created for just one thing.
 const SUPER_CATEGORIES = {
-  "Chairs": ["Accent Chair", "Recliner", "Dining Chair", "Bar Stool", "Hanging Chair"],
+  "Chairs": ["Accent Chair", "Recliner", "Dining Chair", "Bar Stool", "Hanging Chair", "Patio Chair"],
   "Mirrors": ["Wall Mirror", "Standing Mirror", "Table Mirror"],
-  "Tables": ["Table", "Console Table", "Coffee Table", "Dining Table", "Vanity Table"],
+  "Tables & Desks": ["Table", "Console Table", "Coffee Table", "Dining Table", "Vanity Table", "Desk", "Patio Table", "Changing Table", "Kids Desk", "Play Table"],
   "Lighting": ["Table Lamp", "Floor Lamp", "Wall Lamp", "Ceiling Light", "Chandelier", "Pendant Light", "Stained Glass Lamp", "LED Lights", "Outdoor Lantern"],
   "Beds": ["Bed", "Bunk Bed", "Toddler Bed", "Crib"],
   "Sofas": ["Sofa", "Loveseat"],
-  "Storage & Shelving": ["Dresser", "Wardrobe", "Nightstand", "Bookcase", "Shelf", "TV Stand", "Storage Trunk", "Filing Cabinet", "Room Divider"],
+  "Storage & Shelving": ["Dresser", "Wardrobe", "Nightstand", "Bookcase", "Shelf", "TV Stand", "Storage Trunk", "Filing Cabinet", "Room Divider", "Bar Cart"],
+  "Benches & Lounging": ["Bench", "Garden Bench", "Ottoman", "Hammock"],
   "Structural Trim": ["Crown Molding", "Baseboard", "Door Casing"],
   "Doors & Windows": ["Door", "Window"],
   "Textiles & Rugs": ["Rug", "Throw Pillow", "Curtains", "Door Mat", "Stair Runner"],
+  "Wall Decor": ["Wall Art", "Painting", "Photo Frame", "Tapestry", "Clock"],
+  "Sculptural Decor": ["Sculpture", "Garden Statue", "Decorative Object"],
+  "Candles & Holders": ["Candle", "Candle Holder"],
+  "Entryway Storage": ["Coat Rack", "Coat Hanger", "Umbrella Stand"],
+  "Vases & Bowls": ["Vase", "Fruit Bowl", "Basket"],
+  "Books & Games": ["Book Stack", "Card Games"],
+  "Nostalgia & Novelty": ["Vinyl & Radio", "Globe & Map", "Teddy Bear", "Seashell Decor"],
+  "Drinkware": ["Cup", "Drink Content", "Spilt Drink"],
+  "Shopping & Beauty": ["Shopping Bag", "Makeup"],
+  "Kitchen Cabinet System": ["Door Profile", "Handle", "Toe Kick", "Worktop Thickness", "Worktop Edge Profile"],
+  "Finishes & Fixtures": ["Fireplace", "Stair Tile", "Backsplash Tile"],
 };
 const TYPE_TO_SUPER_CATEGORY = {};
 for (const [superName, memberTypes] of Object.entries(SUPER_CATEGORIES)) {
@@ -1420,9 +1434,34 @@ function AddItemModal({ onClose, onCreate, furnitureTypes, decorTypes, kitchenTy
 }
 
 /* ============================== ROOT APP ============================== */
+// Same super-category clustering used in the main list, applied to a plain
+// list of values for the Sort menu's drill-down. A category only appears as
+// a group here if 2+ of its members are actually present in this list —
+// otherwise the one that is present just shows as a normal standalone row.
+function groupValuesForMenu(values) {
+  const supers = new Map();
+  const standalone = [];
+  for (const v of values) {
+    const superName = TYPE_TO_SUPER_CATEGORY[v];
+    if (superName) {
+      if (!supers.has(superName)) supers.set(superName, []);
+      supers.get(superName).push(v);
+    } else {
+      standalone.push(v);
+    }
+  }
+  const superEntries = [];
+  for (const [superName, members] of supers.entries()) {
+    if (members.length < 2) { standalone.push(members[0]); continue; }
+    superEntries.push({ name: superName, members });
+  }
+  return { superEntries, standalone };
+}
+
 function SortMenu({ organizeKey, specificValue, onPick, organizeOptions, isAdmin, onAddCategory }) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState("");
+  const [expandedSuper, setExpandedSuper] = useState("");
   const [addingTo, setAddingTo] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const ref = useRef(null);
@@ -1448,7 +1487,7 @@ function SortMenu({ organizeKey, specificValue, onPick, organizeOptions, isAdmin
     <div ref={ref} className="sd-sortmenu" style={{ position: "relative" }}>
       <button
         className="sd-sortmenu-btn"
-        onClick={() => { setOpen((v) => !v); setExpanded(""); setAddingTo(""); }}
+        onClick={() => { setOpen((v) => !v); setExpanded(""); setExpandedSuper(""); setAddingTo(""); }}
         style={{
           display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 999,
           border: "none", background: T.card, fontSize: 13.5, color: T.ink, cursor: "pointer",
@@ -1492,20 +1531,60 @@ function SortMenu({ organizeKey, specificValue, onPick, organizeOptions, isAdmin
               </div>
               {expanded === o.key && (
                 <div style={{ paddingLeft: 10, marginBottom: 4 }}>
-                  {o.values.map((v) => (
-                    <button
-                      key={v}
-                      onClick={() => { onPick(o.key, v); setOpen(false); }}
-                      style={{
-                        display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 13,
-                        background: organizeKey === o.key && specificValue === v ? "rgba(255,255,255,0.06)" : "none",
-                        border: "none", borderRadius: 10, cursor: "pointer", color: T.inkSoft,
-                        fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500,
-                      }}
-                    >
-                      {v}
-                    </button>
-                  ))}
+                  {(() => {
+                    const { superEntries, standalone } = groupValuesForMenu(o.values);
+                    return (
+                      <>
+                        {superEntries.map((sup) => (
+                          <div key={sup.name}>
+                            <button
+                              onClick={() => setExpandedSuper((v) => (v === sup.name ? "" : sup.name))}
+                              style={{
+                                display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 13,
+                                background: "none", border: "none", borderRadius: 10, cursor: "pointer", color: T.ink,
+                                fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700,
+                              }}
+                            >
+                              {expandedSuper === sup.name ? <ChevronDown size={13} color={T.inkSoft} /> : <ChevronRight size={13} color={T.inkSoft} />}
+                              {sup.name}
+                            </button>
+                            {expandedSuper === sup.name && (
+                              <div style={{ paddingLeft: 18 }}>
+                                {sup.members.map((v) => (
+                                  <button
+                                    key={v}
+                                    onClick={() => { onPick(o.key, v); setOpen(false); }}
+                                    style={{
+                                      display: "block", width: "100%", textAlign: "left", padding: "7px 12px", fontSize: 12.5,
+                                      background: organizeKey === o.key && specificValue === v ? "rgba(255,255,255,0.06)" : "none",
+                                      border: "none", borderRadius: 10, cursor: "pointer", color: T.inkSoft,
+                                      fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500,
+                                    }}
+                                  >
+                                    {v}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {standalone.map((v) => (
+                          <button
+                            key={v}
+                            onClick={() => { onPick(o.key, v); setOpen(false); }}
+                            style={{
+                              display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 13,
+                              background: organizeKey === o.key && specificValue === v ? "rgba(255,255,255,0.06)" : "none",
+                              border: "none", borderRadius: 10, cursor: "pointer", color: T.inkSoft,
+                              fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500,
+                            }}
+                          >
+                            {v}
+                          </button>
+                        ))}
+                      </>
+                    );
+                  })()}
                   {isAdmin && onAddCategory && o.key !== "all" && (
                     addingTo === o.key ? (
                       <div style={{ display: "flex", gap: 6, padding: "6px 4px" }}>
@@ -2276,12 +2355,13 @@ export default function ModelingLibraryApp() {
       .map((v) => ({ key: v, items: map.get(v).sort(byOrder) }));
   }, [filtered, specificValue, organizeMode]);
 
-  // Nests the flat "All Items" groups two levels deep — e.g. "Mirrors" as a
-  // parent containing Wall/Standing/Table Mirror as its own sub-groups.
-  // Only applies to the unfiltered "All Items" view; every other sort mode
-  // stays exactly as it was.
-  const nestedAllGroups = useMemo(() => {
-    if (organizeKey !== "all" || specificValue) return null;
+  // Nests the flat groups two levels deep — e.g. "Mirrors" as a parent
+  // containing Wall/Standing/Table Mirror as its own sub-groups. Applies to
+  // any unfiltered grouped view (Furniture, Decor, Kitchen System,
+  // Architecture, All Items) — Room/Style naturally fall back to their
+  // normal flat list since none of their values match a super-category.
+  const nestedGroups = useMemo(() => {
+    if (specificValue) return null;
     const supers = new Map(); // superName -> [subgroup, ...]
     const standalone = [];
     for (const g of groups) {
@@ -2293,18 +2373,29 @@ export default function ModelingLibraryApp() {
         standalone.push({ isSuper: false, key: g.key, items: g.items });
       }
     }
-    const superEntries = Array.from(supers.entries()).map(([superName, subGroups]) => ({
-      isSuper: true,
-      key: superName,
-      subGroups,
-      totalItems: subGroups.reduce((sum, sg) => sum + sg.items.length, 0),
-    }));
+    const superEntries = [];
+    for (const [superName, subGroups] of supers.entries()) {
+      // A category with only one member present in this particular view
+      // (e.g. "Mirrors" while browsing Furniture only, since two of its
+      // three members are Decor) isn't a real umbrella here — fall back to
+      // a plain standalone group instead of a pointless single-item wrapper.
+      if (subGroups.length < 2) {
+        standalone.push({ isSuper: false, key: subGroups[0].key, items: subGroups[0].items });
+        continue;
+      }
+      superEntries.push({
+        isSuper: true,
+        key: superName,
+        subGroups,
+        totalItems: subGroups.reduce((sum, sg) => sum + sg.items.length, 0),
+      });
+    }
     // Big umbrella categories always come first, largest first; standalone
     // types follow after, in their usual order.
     superEntries.sort((a, b) => b.totalItems - a.totalItems);
     standalone.sort((a, b) => organizeMode.values.indexOf(a.key) - organizeMode.values.indexOf(b.key));
     return [...superEntries, ...standalone];
-  }, [groups, organizeKey, specificValue, organizeMode]);
+  }, [groups, specificValue, organizeMode]);
 
   const openItem = items && openItemId ? items.find((i) => i.id === openItemId) : null;
 
@@ -2542,8 +2633,8 @@ export default function ModelingLibraryApp() {
             );
           };
 
-          if (nestedAllGroups) {
-            return nestedAllGroups.map((entry) => {
+          if (nestedGroups) {
+            return nestedGroups.map((entry) => {
               if (!entry.isSuper) return renderGroup(entry, false);
               const superKey = `super:${entry.key}`;
               const superCollapsed = !search.trim() && !expanded.has(superKey);
