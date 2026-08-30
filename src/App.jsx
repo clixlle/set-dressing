@@ -2734,7 +2734,19 @@ export default function ModelingLibraryApp() {
           />
         )}
 
-        <div style={{ fontSize: 13, color: T.inkSoft, marginBottom: 14, fontWeight: 600 }}>{filtered.length} item{filtered.length !== 1 ? "s" : ""}</div>
+        {(() => {
+          const doneCount = filtered.filter((i) => i.status === "complete").length;
+          const photoCount = filtered.filter((i) => i.photo || i.thumbnail).length;
+          return (
+            <div style={{ fontSize: 13, color: T.inkSoft, marginBottom: 14, fontWeight: 600 }}>
+              {filtered.length} item{filtered.length !== 1 ? "s" : ""}
+              <span style={{ color: T.line, margin: "0 8px" }}>·</span>
+              {doneCount}/{filtered.length} done
+              <span style={{ color: T.line, margin: "0 8px" }}>·</span>
+              {photoCount}/{filtered.length} with reference images
+            </div>
+          );
+        })()}
 
         {(() => {
           const renderGroup = (g, compact) => {
