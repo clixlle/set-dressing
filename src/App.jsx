@@ -47,7 +47,7 @@ const STYLE_LIST = [
   { name: "Bohemian", accent: "#A85C4D" },
   { name: "Art Deco", accent: "#B08A3E" },
 ];
-const STYLE_NAMES = [...STYLE_LIST.map((s) => s.name), "None"];
+const STYLE_NAMES = [...STYLE_LIST.map((s) => s.name), "Fantasy", "None"];
 
 const CATEGORY_TYPES = [
   // Furniture
@@ -291,17 +291,19 @@ const TABLE_MIRRORS = [
   { name: "Gothic Table Mirror", room: "Bedroom", style: "Gothic" },
   { name: "Bohemian Table Mirror", room: "Bedroom", style: "Bohemian" },
 ];
-// Whimsical/fantasy wall decor — its own small theme, not tied to the
-// general interior styles at all.
-const FANTASY_DECOR = [
-  { name: "Butterfly Wall Decor", room: "Bedroom" },
-  { name: "Fairy Wall Decor", room: "Nursery" },
-  { name: "Dragonfly Wall Decor", room: "Kids Room" },
-  { name: "Celestial Moon & Star Wall Decor", room: "Bedroom" },
-  { name: "Mushroom Fairycore Decor", room: "Bedroom" },
-  { name: "Crystal Cluster Decor", room: "Bedroom" },
-  { name: "Enchanted Vine Wall Decor", room: "Living Room" },
-  { name: "Unicorn Wall Decor", room: "Kids Room" },
+// Fantasy is a selectable style (see STYLE_NAMES), not its own item type —
+// these items slot into existing decor types (Wall Art, Decorative Object)
+// with style: "Fantasy", rather than getting a dedicated category, and
+// nothing else automatically gets a Fantasy variant.
+const FANTASY_ITEMS = [
+  { name: "Butterfly Wall Decor", type: "Wall Art", room: "Bedroom" },
+  { name: "Fairy Wall Decor", type: "Wall Art", room: "Nursery" },
+  { name: "Dragonfly Wall Decor", type: "Wall Art", room: "Kids Room" },
+  { name: "Celestial Moon & Star Wall Decor", type: "Wall Art", room: "Bedroom" },
+  { name: "Enchanted Vine Wall Decor", type: "Wall Art", room: "Living Room" },
+  { name: "Unicorn Wall Decor", type: "Wall Art", room: "Kids Room" },
+  { name: "Mushroom Fairycore Decor", type: "Decorative Object", room: "Bedroom" },
+  { name: "Crystal Cluster Decor", type: "Decorative Object", room: "Bedroom" },
 ];
 
 // Architectural / build elements — its own sort category (like Kitchen
@@ -337,7 +339,7 @@ const NEW_DECOR_TYPES = [
   "Stained Glass Lamp", "Candle Holder", "Teddy Bear", "Vinyl & Radio",
   "Card Games", "Globe & Map", "Seashell Decor", "LED Lights",
   "Spilt Drink", "Shopping Bag", "Makeup", "Fruit Bowl", "Coat Hanger", "Cup", "Drink Content",
-  "Table Mirror", "Fantasy Decor",
+  "Table Mirror",
 ];
 const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Plant", "Miscellaneous", ...KITCHEN_MODULE_TYPES, "Hanging Chair", "Standing Mirror", ...NEW_DECOR_TYPES, ...ARCHITECTURE_TYPES];
 const FURNITURE_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Furniture").map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Hanging Chair", "Standing Mirror"];
@@ -360,7 +362,7 @@ function uid(prefix) {
 // Bump this only when buildSeedItems() changes in a way that needs a fresh
 // reconciliation pass (new category, structural fix, etc). Otherwise the
 // background cleanup below skips itself entirely on every normal load.
-const RECONCILIATION_VERSION = "v5";
+const RECONCILIATION_VERSION = "v6";
 
 // Realtime is currently disabled — the WebSocket connection was failing
 // outright (401 on every attempt) and kept retrying indefinitely at the
@@ -623,7 +625,6 @@ function buildSeedItems() {
     { list: COAT_HANGERS, type: "Coat Hanger", typeGroup: "Decor" },
     { list: STANDING_MIRRORS, type: "Standing Mirror", typeGroup: "Furniture" },
     { list: TABLE_MIRRORS, type: "Table Mirror", typeGroup: "Decor" },
-    { list: FANTASY_DECOR, type: "Fantasy Decor", typeGroup: "Decor" },
   ];
   for (const group of smallPropLists) {
     for (const obj of group.list) {
@@ -642,6 +643,27 @@ function buildSeedItems() {
       });
       idx++;
     }
+  }
+
+  // Fantasy-styled items — these slot into their existing type (Wall Art,
+  // Decorative Object) rather than getting a category of their own, and
+  // nothing else automatically gets a Fantasy variant.
+  for (const obj of FANTASY_ITEMS) {
+    const now = Date.now() - (idx % 90) * 86400000;
+    const cat = CATEGORY_TYPES.find((c) => c.singular === obj.type);
+    items.push({
+      id: uid("item"),
+      name: obj.name,
+      type: obj.type,
+      typeGroup: cat ? cat.group : "Decor",
+      room: obj.room,
+      style: "Fantasy",
+      status: "not-started",
+      photo: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    idx++;
   }
 
   // Architecture / build elements — its own sort category, with trim-specific
@@ -1782,7 +1804,50 @@ export default function ModelingLibraryApp() {
         }
         setItems((prev) => [...prev, ...missing]);
       }
-      const fullData = [...cleanedData, ...missing.map(itemToRow)];
+      let fullData = [...cleanedData, ...missing.map(itemToRow)];
+
+      // Clean up the old "Fantasy Decor" type from an earlier version, where
+      // Fantasy briefly existed as its own item type instead of a style —
+      // same safe rule: only remove untouched rows, never anything with
+      // progress or a photo.
+      const oldFantasyRows = fullData.filter((row) => row.type === "Fantasy Decor");
+      if (oldFantasyRows.length > 0) {
+        const { data: fantasyDetails } = await supabase.from("items").select("id,status,photo").in("id", oldFantasyRows.map((r) => r.id));
+        const safeToDeleteIds = (fantasyDetails || [])
+          .filter((r) => r.status === "not-started" && !r.photo)
+          .map((r) => r.id);
+        if (safeToDeleteIds.length > 0) {
+          const { error } = await supabase.from("items").delete().in("id", safeToDeleteIds);
+          if (!error) {
+            setItems((prev) => prev.filter((i) => !safeToDeleteIds.includes(i.id)));
+            fullData = fullData.filter((row) => !safeToDeleteIds.includes(row.id));
+          }
+        }
+      }
+
+      // Fantasy items slot into existing types (Wall Art, Decorative Object)
+      // that already exist in every database, so the type-level backfill
+      // above won't catch them — check for these specific items by name instead.
+      const presentNames = new Set(fullData.map((row) => row.name));
+      const missingFantasy = FANTASY_ITEMS
+        .filter((f) => !presentNames.has(f.name))
+        .map((f) => {
+          const cat = CATEGORY_TYPES.find((c) => c.singular === f.type);
+          const now = Date.now();
+          return {
+            id: uid("item"), name: f.name, type: f.type, typeGroup: cat ? cat.group : "Decor",
+            room: f.room, style: "Fantasy", status: "not-started", photo: null, createdAt: now, updatedAt: now,
+          };
+        });
+      if (missingFantasy.length > 0) {
+        const { error } = await supabase.from("items").insert(missingFantasy.map(itemToRow));
+        if (!error) {
+          setItems((prev) => [...prev, ...missingFantasy]);
+          fullData = [...fullData, ...missingFantasy.map(itemToRow)];
+        } else {
+          console.error("Fantasy item backfill failed:", error);
+        }
+      }
 
       // Clean up duplicates from an earlier bug where a truncated read caused
       // this same step to repeatedly re-insert items it thought were missing.
