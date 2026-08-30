@@ -89,7 +89,7 @@ create trigger restrict_modeler_updates
 create table if not exists custom_types (
   id text primary key,
   name text not null,
-  group_name text not null check (group_name in ('Furniture', 'Decor', 'Kitchen', 'Room', 'Style')),
+  group_name text not null check (group_name in ('Furniture', 'Decor', 'Kitchen', 'Architecture', 'Room', 'Style')),
   default_room text,
   created_at bigint
 );

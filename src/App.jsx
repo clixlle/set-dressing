@@ -56,7 +56,6 @@ const CATEGORY_TYPES = [
   { name: "Loveseats", singular: "Loveseat", room: "Living Room", group: "Furniture" },
   { name: "Accent Chairs", singular: "Accent Chair", room: "Living Room", group: "Furniture" },
   { name: "Recliners", singular: "Recliner", room: "Living Room", group: "Furniture" },
-  { name: "Chairs", singular: "Chair", room: "Living Room", group: "Furniture" },
   { name: "Tables", singular: "Table", room: "Living Room", group: "Furniture" },
   { name: "Console Tables", singular: "Console Table", room: "Entryway", group: "Furniture" },
   { name: "Desks", singular: "Desk", room: "Office", group: "Furniture" },
@@ -196,11 +195,130 @@ const KITCHEN_WORKTOP_EDGE_PROFILES = [
 ];
 const KITCHEN_MODULE_TYPES = ["Door Profile", "Handle", "Toe Kick", "Worktop Thickness", "Worktop Edge Profile"];
 
-const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Plant", "Miscellaneous", ...KITCHEN_MODULE_TYPES];
-const FURNITURE_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Furniture").map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name)];
-const DECOR_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Decor").map((c) => c.singular), "Plant", "Miscellaneous"];
+// ============================== NEW ADDITIONS ==============================
+// Small, specific decor props — each gets only as many variants as makes
+// sense for that object (not the full 15-style sweep), reusing existing
+// style names where they genuinely apply instead of inventing new ones.
+
+const HANGING_CHAIRS = [
+  { name: "Bohemian Hanging Chair", room: "Living Room", style: "Bohemian" },
+  { name: "Coastal Hanging Chair", room: "Outdoor", style: "Coastal" },
+  { name: "Modern Hanging Chair", room: "Living Room", style: "Modern" },
+  { name: "Rustic Hanging Chair", room: "Outdoor", style: "Rustic" },
+];
+const STAINED_GLASS_LAMPS = [
+  { name: "Tiffany-Style Stained Glass Lamp", room: "Living Room" },
+  { name: "Art Deco Stained Glass Lamp", room: "Living Room", style: "Art Deco" },
+  { name: "Gothic Stained Glass Lamp", room: "Living Room", style: "Gothic" },
+  { name: "Floral Stained Glass Lamp", room: "Bedroom" },
+];
+const CANDLE_HOLDERS = [
+  { name: "Modern Candle Holder", room: "Living Room", style: "Modern" },
+  { name: "Rustic Candle Holder", room: "Living Room", style: "Rustic" },
+  { name: "Gothic Candle Holder", room: "Living Room", style: "Gothic" },
+  { name: "Art Deco Candle Holder", room: "Living Room", style: "Art Deco" },
+  { name: "Bohemian Candle Holder", room: "Living Room", style: "Bohemian" },
+];
+const TEDDY_BEARS = [
+  { name: "Classic Brown Teddy Bear", room: "Kids Room" },
+  { name: "White Teddy Bear", room: "Kids Room" },
+  { name: "Pastel Pink Teddy Bear", room: "Nursery" },
+  { name: "Giant Teddy Bear", room: "Kids Room" },
+];
+const VINYL_AND_RADIO = [
+  { name: "Vintage Radio", room: "Living Room" },
+  { name: "Vinyl Record Stack", room: "Living Room" },
+  { name: "Retro Turntable", room: "Living Room" },
+];
+const CARD_GAMES = [
+  { name: "Scattered Playing Cards", room: "Living Room" },
+  { name: "Vintage Tarot Cards", room: "Living Room" },
+  { name: "Board Game Box Stack", room: "Living Room" },
+];
+const GLOBES_AND_MAPS = [
+  { name: "Vintage Globe", room: "Office" },
+  { name: "Modern Globe", room: "Office", style: "Modern" },
+  { name: "Illuminated Globe", room: "Office" },
+  { name: "Vintage Wall Map", room: "Office" },
+  { name: "Push-Pin Travel Map", room: "Living Room" },
+];
+const SEASHELL_DECOR = [
+  { name: "Seashell Bowl", room: "Bathroom", style: "Coastal" },
+  { name: "Seashell Cluster", room: "Living Room", style: "Coastal" },
+  { name: "Seashell Wall Art", room: "Bathroom", style: "Coastal" },
+  { name: "Coastal Shell Garland", room: "Living Room", style: "Coastal" },
+];
+const LED_LIGHTS = [
+  { name: "Warm White LED Strip", room: "Bedroom" },
+  { name: "RGB LED Strip", room: "Bedroom" },
+  { name: "LED Neon Sign", room: "Living Room" },
+  { name: "LED Fairy String Lights", room: "Bedroom" },
+];
+const SPILT_DRINK_CANS = [
+  { name: "Spilt Soda Can", room: "Living Room" },
+  { name: "Spilt Energy Drink Can", room: "Kids Room" },
+  { name: "Spilt Sparkling Water Can", room: "Living Room" },
+];
+const SHOPPING_BAGS = [
+  { name: "Paper Shopping Bag", room: "Bedroom" },
+  { name: "Designer Shopping Bag", room: "Bedroom" },
+  { name: "Grocery Tote Bag", room: "Entryway" },
+];
+const MAKEUP_ITEMS = [
+  { name: "Makeup Brush Set", room: "Bathroom" },
+  { name: "Eyeshadow Palette", room: "Bathroom" },
+  { name: "Open Makeup Bag", room: "Bedroom" },
+];
+const FRUIT_BOWLS = [
+  { name: "Ceramic Fruit Bowl", room: "Kitchen" },
+  { name: "Woven Fruit Bowl", room: "Kitchen", style: "Bohemian" },
+  { name: "Glass Fruit Bowl", room: "Kitchen", style: "Modern" },
+];
+const COAT_HANGERS = [
+  { name: "Wall-Mounted Coat Hooks", room: "Entryway" },
+  { name: "Vintage Standing Coat Rack", room: "Entryway" },
+];
+
+// Architectural / build elements — its own sort category (like Kitchen
+// System), since these don't fit naturally under Furniture or Decor. Each
+// gets its own small set of trim-specific styles/shapes, not the general
+// interior-design style list.
+const ARCHITECTURE_ITEMS = [
+  { type: "Crown Molding", room: "Living Room", variants: ["Classic Ogee", "Modern Flat", "Ornate Rococo", "Simple Cove"] },
+  { type: "Baseboard", room: "Living Room", variants: ["Classic Tall", "Modern Flat", "Ornate Carved", "Simple Modern"] },
+  { type: "Door Casing", room: "Living Room", variants: ["Classic", "Modern", "Craftsman"] },
+  { type: "Fireplace", room: "Living Room", variants: ["Modern Linear", "Classic Brick", "Rustic Stone", "Gothic Ornate", "Farmhouse Whitewashed"] },
+  { type: "Window", room: "Living Room", variants: ["Modern Casement", "Classic Divided-Light", "Arched Gothic", "Farmhouse", "Bay Window"] },
+  { type: "Door", room: "Entryway", variants: ["Modern Flush", "Classic Panel", "Farmhouse Barn", "Gothic Arched", "French Double"] },
+  { type: "Stair Runner", room: "Hallway", variants: ["Striped Classic", "Solid Modern", "Floral Vintage", "Bold Geometric"] },
+  { type: "Stair Tile", room: "Hallway", variants: ["Marble Look", "Wood-Look Plank", "Moroccan Pattern", "Modern Concrete"] },
+  { type: "Backsplash Tile", room: "Kitchen", variants: ["Classic Subway", "Herringbone", "Moroccan Pattern", "Modern Slab", "Farmhouse Beadboard"] },
+];
+const ARCHITECTURE_TYPES = ARCHITECTURE_ITEMS.map((a) => a.type);
+
+// Cups + drink contents — modeled as a pairing system: each Cup is the base
+// model, each Drink Content is a texture/plane meant to sit inside whichever
+// cup it's placed in, so any drink can go in any cup.
+const CUPS = [
+  "Coffee Mug", "Tea Cup", "Tumbler", "Wine Glass", "Cocktail Glass",
+  "Mason Jar", "Boba Cup", "Water Glass", "Milkshake Glass",
+];
+const DRINK_CONTENTS = [
+  "Coffee", "Iced Coffee", "Tea", "Matcha Latte", "Hot Chocolate", "Boba Milk Tea",
+  "Mocktail", "Cocktail", "Wine", "Juice", "Soda", "Smoothie", "Water", "Milkshake",
+];
+
+const NEW_DECOR_TYPES = [
+  "Stained Glass Lamp", "Candle Holder", "Teddy Bear", "Vinyl & Radio",
+  "Card Games", "Globe & Map", "Seashell Decor", "LED Lights",
+  "Spilt Drink", "Shopping Bag", "Makeup", "Fruit Bowl", "Coat Hanger", "Cup", "Drink Content",
+];
+const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Plant", "Miscellaneous", ...KITCHEN_MODULE_TYPES, "Hanging Chair", ...NEW_DECOR_TYPES, ...ARCHITECTURE_TYPES];
+const FURNITURE_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Furniture").map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Hanging Chair"];
+const DECOR_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Decor").map((c) => c.singular), "Plant", "Miscellaneous", ...NEW_DECOR_TYPES];
 const MISC_TYPES = ["Miscellaneous"];
 const KITCHEN_TYPES = KITCHEN_MODULE_TYPES;
+
 
 const ROOMS = ["Living Room", "Kitchen", "Dining Room", "Bedroom", "Bathroom", "Office", "Entryway",
   "Hallway", "Laundry Room", "Outdoor", "Garden", "Garage", "Kids Room", "Nursery"];
@@ -216,7 +334,7 @@ function uid(prefix) {
 // Bump this only when buildSeedItems() changes in a way that needs a fresh
 // reconciliation pass (new category, structural fix, etc). Otherwise the
 // background cleanup below skips itself entirely on every normal load.
-const RECONCILIATION_VERSION = "v3";
+const RECONCILIATION_VERSION = "v4";
 
 // Realtime is currently disabled — the WebSocket connection was failing
 // outright (401 on every attempt) and kept retrying indefinitely at the
@@ -322,6 +440,9 @@ function typeGroupFor(typeName, customTypes = []) {
   if (typeName === "Plant") return "Decor";
   if (typeName === "Miscellaneous") return "Misc";
   if (KITCHEN_MODULE_TYPES.includes(typeName)) return "Kitchen";
+  if (typeName === "Hanging Chair") return "Furniture";
+  if (NEW_DECOR_TYPES.includes(typeName)) return "Decor";
+  if (ARCHITECTURE_TYPES.includes(typeName)) return "Architecture";
   const custom = customTypes.find((c) => c.name === typeName);
   if (custom) return custom.group_name;
   return "Furniture";
@@ -454,6 +575,84 @@ function buildSeedItems() {
       });
       idx++;
     }
+  }
+
+  // New small, specific prop categories — each named list maps to one clean
+  // "type" so they sort sensibly, with only as many variants as makes sense
+  // for that object (not a full 15-style sweep).
+  const smallPropLists = [
+    { list: HANGING_CHAIRS, type: "Hanging Chair", typeGroup: "Furniture" },
+    { list: STAINED_GLASS_LAMPS, type: "Stained Glass Lamp", typeGroup: "Decor" },
+    { list: CANDLE_HOLDERS, type: "Candle Holder", typeGroup: "Decor" },
+    { list: TEDDY_BEARS, type: "Teddy Bear", typeGroup: "Decor" },
+    { list: VINYL_AND_RADIO, type: "Vinyl & Radio", typeGroup: "Decor" },
+    { list: CARD_GAMES, type: "Card Games", typeGroup: "Decor" },
+    { list: GLOBES_AND_MAPS, type: "Globe & Map", typeGroup: "Decor" },
+    { list: SEASHELL_DECOR, type: "Seashell Decor", typeGroup: "Decor" },
+    { list: LED_LIGHTS, type: "LED Lights", typeGroup: "Decor" },
+    { list: SPILT_DRINK_CANS, type: "Spilt Drink", typeGroup: "Decor" },
+    { list: SHOPPING_BAGS, type: "Shopping Bag", typeGroup: "Decor" },
+    { list: MAKEUP_ITEMS, type: "Makeup", typeGroup: "Decor" },
+    { list: FRUIT_BOWLS, type: "Fruit Bowl", typeGroup: "Decor" },
+    { list: COAT_HANGERS, type: "Coat Hanger", typeGroup: "Decor" },
+  ];
+  for (const group of smallPropLists) {
+    for (const obj of group.list) {
+      const now = Date.now() - (idx % 90) * 86400000;
+      items.push({
+        id: uid("item"),
+        name: obj.name,
+        type: group.type,
+        typeGroup: group.typeGroup,
+        room: obj.room,
+        style: obj.style || "None",
+        status: "not-started",
+        photo: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      idx++;
+    }
+  }
+
+  // Architecture / build elements — its own sort category, with trim-specific
+  // styles per element rather than the general interior-design style list.
+  for (const el of ARCHITECTURE_ITEMS) {
+    for (const variant of el.variants) {
+      const now = Date.now() - (idx % 90) * 86400000;
+      items.push({
+        id: uid("item"),
+        name: `${variant} ${el.type}`,
+        type: el.type,
+        typeGroup: "Architecture",
+        room: el.room,
+        style: "None",
+        status: "not-started",
+        photo: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      idx++;
+    }
+  }
+
+  // Cups + drink contents — a pairing system: any Cup can hold any Drink
+  // Content, since the drink is a separate plane meant to sit inside it.
+  for (const cup of CUPS) {
+    const now = Date.now() - (idx % 90) * 86400000;
+    items.push({
+      id: uid("item"), name: cup, type: "Cup", typeGroup: "Decor", room: "Kitchen", style: "None",
+      status: "not-started", photo: null, createdAt: now, updatedAt: now,
+    });
+    idx++;
+  }
+  for (const drink of DRINK_CONTENTS) {
+    const now = Date.now() - (idx % 90) * 86400000;
+    items.push({
+      id: uid("item"), name: drink, type: "Drink Content", typeGroup: "Decor", room: "Kitchen", style: "None",
+      status: "not-started", photo: null, createdAt: now, updatedAt: now,
+    });
+    idx++;
   }
 
   return items;
@@ -965,7 +1164,7 @@ function ViewablePhoto({ src, fullSrc, name }) {
   );
 }
 
-function ItemModal({ item, isAdmin, onClose, onSave, onStatusChange, onDelete, furnitureTypes, decorTypes, kitchenTypes, customTypes, rooms, styles }) {
+function ItemModal({ item, isAdmin, onClose, onSave, onStatusChange, onDelete, furnitureTypes, decorTypes, kitchenTypes, architectureTypes, customTypes, rooms, styles }) {
   const [draft, setDraft] = useState(item);
   useEffect(() => setDraft(item), [item.id]);
   // The full-quality photo is fetched on demand after the modal is already
@@ -1008,6 +1207,7 @@ function ItemModal({ item, isAdmin, onClose, onSave, onStatusChange, onDelete, f
                   <optgroup label="Furniture">{furnitureTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
                   <optgroup label="Decor">{decorTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
                   <optgroup label="Kitchen System">{kitchenTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
+                  <optgroup label="Architecture">{architectureTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
                 </select>
               </div>
               <div>
@@ -1071,7 +1271,7 @@ function ItemModal({ item, isAdmin, onClose, onSave, onStatusChange, onDelete, f
 }
 
 /* ============================== ADD ITEM MODAL ============================== */
-function AddItemModal({ onClose, onCreate, furnitureTypes, decorTypes, kitchenTypes, customTypes, rooms, styles }) {
+function AddItemModal({ onClose, onCreate, furnitureTypes, decorTypes, kitchenTypes, architectureTypes, customTypes, rooms, styles }) {
   const [draft, setDraft] = useState({ name: "", type: TYPE_NAMES[0], typeGroup: CATEGORY_TYPES[0].group, room: ROOMS[0], style: STYLE_NAMES[0], status: "not-started", photo: null, thumbnail: null, description: "" });
   const inputStyle = { width: "100%", border: "none", borderRadius: 12, padding: "11px 12px", fontSize: 14, fontFamily: "'Plus Jakarta Sans', sans-serif", background: T.field, color: T.ink, boxSizing: "border-box" };
   const labelStyle = { fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: T.inkSoft, marginBottom: 7, display: "block" };
@@ -1110,6 +1310,7 @@ function AddItemModal({ onClose, onCreate, furnitureTypes, decorTypes, kitchenTy
               <optgroup label="Furniture">{furnitureTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
               <optgroup label="Decor">{decorTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
               <optgroup label="Kitchen System">{kitchenTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
+                  <optgroup label="Architecture">{architectureTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
             </select>
           </div>
           <div>
@@ -1519,7 +1720,26 @@ export default function ModelingLibraryApp() {
         const { error } = await supabase.from("items").delete().in("id", retiredIds);
         if (!error) setItems((prev) => prev.filter((i) => !retiredIds.includes(i.id)));
       }
-      const cleanedData = data.filter((row) => row.type !== "Kitchen Island");
+      let cleanedData = data.filter((row) => row.type !== "Kitchen Island");
+
+      // Remove the old generic "Chair" duplicates (superseded by Recliners,
+      // Accent Chairs, Dining Chairs, etc.) — but ONLY the ones nobody has
+      // touched yet. Anything with a photo, or a status other than
+      // "Not Started", is left completely alone even though it's a duplicate.
+      const chairRows = cleanedData.filter((row) => row.type === "Chair");
+      if (chairRows.length > 0) {
+        const { data: chairDetails } = await supabase.from("items").select("id,status,photo").in("id", chairRows.map((r) => r.id));
+        const safeToDeleteIds = (chairDetails || [])
+          .filter((r) => r.status === "not-started" && !r.photo)
+          .map((r) => r.id);
+        if (safeToDeleteIds.length > 0) {
+          const { error } = await supabase.from("items").delete().in("id", safeToDeleteIds);
+          if (!error) {
+            setItems((prev) => prev.filter((i) => !safeToDeleteIds.includes(i.id)));
+            cleanedData = cleanedData.filter((row) => !safeToDeleteIds.includes(row.id));
+          }
+        }
+      }
 
       // Backfill any category that's entirely missing.
       const seed = buildSeedItems();
@@ -1730,7 +1950,7 @@ export default function ModelingLibraryApp() {
   }, [session]);
 
   const addCategory = useCallback(async (groupKey, name) => {
-    const groupNameMap = { furniture: "Furniture", decor: "Decor", kitchen: "Kitchen", room: "Room", style: "Style" };
+    const groupNameMap = { furniture: "Furniture", decor: "Decor", kitchen: "Kitchen", architecture: "Architecture", room: "Room", style: "Style" };
     const groupName = groupNameMap[groupKey] || "Furniture";
     const newType = { id: uid("cat"), name: name.trim(), group_name: groupName, default_room: groupName === "Kitchen" ? "Kitchen" : "Living Room", created_at: Date.now() };
     setCustomTypes((prev) => [...prev, newType]);
@@ -1886,18 +2106,20 @@ export default function ModelingLibraryApp() {
   const furnitureTypes = useMemo(() => [...FURNITURE_TYPES, ...customTypes.filter((c) => c.group_name === "Furniture").map((c) => c.name)], [customTypes]);
   const decorTypes = useMemo(() => [...DECOR_TYPES, ...customTypes.filter((c) => c.group_name === "Decor").map((c) => c.name)], [customTypes]);
   const kitchenTypes = useMemo(() => [...KITCHEN_TYPES, ...customTypes.filter((c) => c.group_name === "Kitchen").map((c) => c.name)], [customTypes]);
+  const architectureTypes = useMemo(() => [...ARCHITECTURE_TYPES, ...customTypes.filter((c) => c.group_name === "Architecture").map((c) => c.name)], [customTypes]);
   const rooms = useMemo(() => [...ROOMS, ...customTypes.filter((c) => c.group_name === "Room").map((c) => c.name)], [customTypes]);
   const styles = useMemo(() => [...STYLE_NAMES, ...customTypes.filter((c) => c.group_name === "Style").map((c) => c.name)], [customTypes]);
-  const allTypeNames = useMemo(() => [...TYPE_NAMES, ...customTypes.filter((c) => ["Furniture", "Decor", "Kitchen"].includes(c.group_name)).map((c) => c.name)], [customTypes]);
+  const allTypeNames = useMemo(() => [...TYPE_NAMES, ...customTypes.filter((c) => ["Furniture", "Decor", "Kitchen", "Architecture"].includes(c.group_name)).map((c) => c.name)], [customTypes]);
 
   const organizeOptions = useMemo(() => [
     { key: "all", label: "All Items", values: allTypeNames, field: "type" },
     { key: "furniture", label: "Furniture", values: furnitureTypes, field: "type" },
     { key: "decor", label: "Decor", values: decorTypes, field: "type" },
     { key: "kitchen", label: "Kitchen System", values: kitchenTypes, field: "type" },
+    { key: "architecture", label: "Architecture", values: architectureTypes, field: "type" },
     { key: "room", label: "Room", values: rooms, field: "room" },
     { key: "style", label: "Style", values: styles, field: "style" },
-  ], [allTypeNames, furnitureTypes, decorTypes, kitchenTypes, rooms, styles]);
+  ], [allTypeNames, furnitureTypes, decorTypes, kitchenTypes, architectureTypes, rooms, styles]);
 
   const organizeMode = organizeOptions.find((o) => o.key === organizeKey);
 
@@ -2183,9 +2405,9 @@ export default function ModelingLibraryApp() {
       </div>
 
       {openItem && <ItemModal item={openItem} isAdmin={isAdmin} onClose={() => setOpenItemId(null)} onSave={saveItem} onStatusChange={setStatus} onDelete={deleteItem}
-        furnitureTypes={furnitureTypes} decorTypes={decorTypes} kitchenTypes={kitchenTypes} customTypes={customTypes} rooms={rooms} styles={styles} />}
+        furnitureTypes={furnitureTypes} decorTypes={decorTypes} kitchenTypes={kitchenTypes} architectureTypes={architectureTypes} customTypes={customTypes} rooms={rooms} styles={styles} />}
       {isAdmin && showAdd && <AddItemModal onClose={() => setShowAdd(false)} onCreate={createItem}
-        furnitureTypes={furnitureTypes} decorTypes={decorTypes} kitchenTypes={kitchenTypes} customTypes={customTypes} rooms={rooms} styles={styles} />}
+        furnitureTypes={furnitureTypes} decorTypes={decorTypes} kitchenTypes={kitchenTypes} architectureTypes={architectureTypes} customTypes={customTypes} rooms={rooms} styles={styles} />}
     </div>
   );
 }
