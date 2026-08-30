@@ -95,7 +95,7 @@ const CATEGORY_TYPES = [
   { name: "Wall Art", singular: "Wall Art", room: "Bedroom", group: "Decor" },
   { name: "Photo Frames", singular: "Photo Frame", room: "Living Room", group: "Decor" },
   { name: "Tapestries", singular: "Tapestry", room: "Bedroom", group: "Decor" },
-  { name: "Mirrors", singular: "Mirror", room: "Bathroom", group: "Decor" },
+  { name: "Wall Mirrors", singular: "Wall Mirror", room: "Bathroom", group: "Decor" },
   { name: "Rugs", singular: "Rug", room: "Living Room", group: "Decor" },
   { name: "Door Mats", singular: "Door Mat", room: "Entryway", group: "Decor" },
   { name: "Candles", singular: "Candle", room: "Bathroom", group: "Decor" },
@@ -354,11 +354,15 @@ const KITCHEN_TYPES = KITCHEN_MODULE_TYPES;
 // Types not listed here just keep their own standalone group, same as before.
 const SUPER_CATEGORIES = {
   "Chairs": ["Accent Chair", "Recliner", "Dining Chair", "Bar Stool", "Hanging Chair"],
-  "Mirrors": ["Mirror", "Standing Mirror", "Table Mirror"],
-  "Tables": ["Table", "Console Table", "Coffee Table", "Dining Table"],
-  "Lamps": ["Table Lamp", "Floor Lamp", "Wall Lamp"],
+  "Mirrors": ["Wall Mirror", "Standing Mirror", "Table Mirror"],
+  "Tables": ["Table", "Console Table", "Coffee Table", "Dining Table", "Vanity Table"],
+  "Lighting": ["Table Lamp", "Floor Lamp", "Wall Lamp", "Ceiling Light", "Chandelier", "Pendant Light", "Stained Glass Lamp", "LED Lights", "Outdoor Lantern"],
   "Beds": ["Bed", "Bunk Bed", "Toddler Bed", "Crib"],
   "Sofas": ["Sofa", "Loveseat"],
+  "Storage & Shelving": ["Dresser", "Wardrobe", "Nightstand", "Bookcase", "Shelf", "TV Stand", "Storage Trunk", "Filing Cabinet", "Room Divider"],
+  "Structural Trim": ["Crown Molding", "Baseboard", "Door Casing"],
+  "Doors & Windows": ["Door", "Window"],
+  "Textiles & Rugs": ["Rug", "Throw Pillow", "Curtains", "Door Mat", "Stair Runner"],
 };
 const TYPE_TO_SUPER_CATEGORY = {};
 for (const [superName, memberTypes] of Object.entries(SUPER_CATEGORIES)) {
@@ -2295,15 +2299,11 @@ export default function ModelingLibraryApp() {
       subGroups,
       totalItems: subGroups.reduce((sum, sg) => sum + sg.items.length, 0),
     }));
-    // Interleave in roughly the same order things would otherwise appear —
-    // position each super-group where its first member type would've sat.
-    const combined = [...superEntries, ...standalone];
-    combined.sort((a, b) => {
-      const aFirstType = a.isSuper ? a.subGroups[0].key : a.key;
-      const bFirstType = b.isSuper ? b.subGroups[0].key : b.key;
-      return organizeMode.values.indexOf(aFirstType) - organizeMode.values.indexOf(bFirstType);
-    });
-    return combined;
+    // Big umbrella categories always come first, largest first; standalone
+    // types follow after, in their usual order.
+    superEntries.sort((a, b) => b.totalItems - a.totalItems);
+    standalone.sort((a, b) => organizeMode.values.indexOf(a.key) - organizeMode.values.indexOf(b.key));
+    return [...superEntries, ...standalone];
   }, [groups, organizeKey, specificValue, organizeMode]);
 
   const openItem = items && openItemId ? items.find((i) => i.id === openItemId) : null;
@@ -2549,11 +2549,11 @@ export default function ModelingLibraryApp() {
               const superCollapsed = !search.trim() && !expanded.has(superKey);
               const superDone = entry.subGroups.reduce((sum, sg) => sum + sg.items.filter((i) => i.status === "complete").length, 0);
               return (
-                <div key={superKey} style={{ marginBottom: 10, borderLeft: `2px solid ${T.line}`, paddingLeft: 4 }}>
+                <div key={superKey} style={{ marginBottom: 10 }}>
                   <button className="sd-group-header" onClick={() => setExpanded((prev) => { const next = new Set(prev); next.has(superKey) ? next.delete(superKey) : next.add(superKey); return next; })}
                     style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", cursor: "pointer", padding: "10px 2px", textAlign: "left" }}>
-                    {superCollapsed ? <ChevronRight size={16} color={T.ink} /> : <ChevronDown size={16} color={T.ink} />}
-                    <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17.5, fontWeight: 800, color: T.ink }}>{entry.key}</span>
+                    {superCollapsed ? <ChevronRight size={17} color={T.ink} /> : <ChevronDown size={17} color={T.ink} />}
+                    <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 20, fontWeight: 800, color: T.ink, letterSpacing: -0.2 }}>{entry.key}</span>
                     <span style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>{superDone}/{entry.totalItems} done</span>
                   </button>
                   {!superCollapsed && entry.subGroups.map((sg) => renderGroup(sg, true))}
