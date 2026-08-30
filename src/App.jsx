@@ -348,6 +348,23 @@ const MISC_TYPES = ["Miscellaneous"];
 const KITCHEN_TYPES = KITCHEN_MODULE_TYPES;
 
 
+// Groups closely-related object types together under one umbrella when
+// browsing "All Items" — e.g. Wall/Standing/Table Mirror all sit under a
+// single "Mirrors" heading, each still individually expandable underneath.
+// Types not listed here just keep their own standalone group, same as before.
+const SUPER_CATEGORIES = {
+  "Chairs": ["Accent Chair", "Recliner", "Dining Chair", "Bar Stool", "Hanging Chair"],
+  "Mirrors": ["Mirror", "Standing Mirror", "Table Mirror"],
+  "Tables": ["Table", "Console Table", "Coffee Table", "Dining Table"],
+  "Lamps": ["Table Lamp", "Floor Lamp", "Wall Lamp"],
+  "Beds": ["Bed", "Bunk Bed", "Toddler Bed", "Crib"],
+  "Sofas": ["Sofa", "Loveseat"],
+};
+const TYPE_TO_SUPER_CATEGORY = {};
+for (const [superName, memberTypes] of Object.entries(SUPER_CATEGORIES)) {
+  for (const t of memberTypes) TYPE_TO_SUPER_CATEGORY[t] = superName;
+}
+
 const ROOMS = ["Living Room", "Kitchen", "Dining Room", "Bedroom", "Bathroom", "Office", "Entryway",
   "Hallway", "Laundry Room", "Outdoor", "Garden", "Garage", "Kids Room", "Nursery"];
 
@@ -2255,6 +2272,40 @@ export default function ModelingLibraryApp() {
       .map((v) => ({ key: v, items: map.get(v).sort(byOrder) }));
   }, [filtered, specificValue, organizeMode]);
 
+  // Nests the flat "All Items" groups two levels deep — e.g. "Mirrors" as a
+  // parent containing Wall/Standing/Table Mirror as its own sub-groups.
+  // Only applies to the unfiltered "All Items" view; every other sort mode
+  // stays exactly as it was.
+  const nestedAllGroups = useMemo(() => {
+    if (organizeKey !== "all" || specificValue) return null;
+    const supers = new Map(); // superName -> [subgroup, ...]
+    const standalone = [];
+    for (const g of groups) {
+      const superName = TYPE_TO_SUPER_CATEGORY[g.key];
+      if (superName) {
+        if (!supers.has(superName)) supers.set(superName, []);
+        supers.get(superName).push(g);
+      } else {
+        standalone.push({ isSuper: false, key: g.key, items: g.items });
+      }
+    }
+    const superEntries = Array.from(supers.entries()).map(([superName, subGroups]) => ({
+      isSuper: true,
+      key: superName,
+      subGroups,
+      totalItems: subGroups.reduce((sum, sg) => sum + sg.items.length, 0),
+    }));
+    // Interleave in roughly the same order things would otherwise appear —
+    // position each super-group where its first member type would've sat.
+    const combined = [...superEntries, ...standalone];
+    combined.sort((a, b) => {
+      const aFirstType = a.isSuper ? a.subGroups[0].key : a.key;
+      const bFirstType = b.isSuper ? b.subGroups[0].key : b.key;
+      return organizeMode.values.indexOf(aFirstType) - organizeMode.values.indexOf(bFirstType);
+    });
+    return combined;
+  }, [groups, organizeKey, specificValue, organizeMode]);
+
   const openItem = items && openItemId ? items.find((i) => i.id === openItemId) : null;
 
   useEffect(() => {
@@ -2435,60 +2486,83 @@ export default function ModelingLibraryApp() {
 
         <div style={{ fontSize: 13, color: T.inkSoft, marginBottom: 14, fontWeight: 600 }}>{filtered.length} item{filtered.length !== 1 ? "s" : ""}</div>
 
-        {groups.map((g) => {
-          const isCollapsed = !specificValue && !search.trim() && !expanded.has(g.key);
-          const doneCount = g.items.filter((i) => i.status === "complete").length;
-          return (
-            <div key={g.key} style={{ marginBottom: 8 }}>
-              {!specificValue && (
-                <>
-                  <button className="sd-group-header" onClick={() => setExpanded((prev) => { const next = new Set(prev); next.has(g.key) ? next.delete(g.key) : next.add(g.key); return next; })}
-                    style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", cursor: "pointer", padding: "10px 2px", textAlign: "left" }}>
-                    {isCollapsed ? <ChevronRight size={15} color={T.inkSoft} /> : <ChevronDown size={15} color={T.inkSoft} />}
-                    <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 16, fontWeight: 800, color: T.ink }}>{g.key}</span>
-                    <span style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>{doneCount}/{g.items.length} done</span>
-                  </button>
-                  {!isCollapsed && (
-                    <NoteBlock
-                      compact
-                      value={categoryNotes[g.key]}
-                      isAdmin={isAdmin}
-                      editing={editingCategoryNoteFor === g.key}
-                      onStartEdit={() => setEditingCategoryNoteFor(g.key)}
-                      onCancelEdit={() => setEditingCategoryNoteFor("")}
-                      onSave={(text) => saveCategoryNote(g.key, text)}
-                      label={g.key}
-                    />
-                  )}
-                </>
-              )}
-              {!isCollapsed && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
-                  {g.items.map((item) => (
-                    isAdmin ? (
-                      <div
-                        key={item.id}
-                        draggable
-                        onDragStart={(e) => { setDraggedItemId(item.id); e.dataTransfer.effectAllowed = "move"; }}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => { e.preventDefault(); if (draggedItemId) reorderWithinGroup(g.items, draggedItemId, item.id); setDraggedItemId(null); }}
-                        onDragEnd={() => setDraggedItemId(null)}
-                        style={{ display: "flex", alignItems: "center", gap: 4, opacity: draggedItemId === item.id ? 0.4 : 1 }}
-                      >
-                        <GripVertical size={16} color={T.inkSoft} style={{ flexShrink: 0, cursor: "grab" }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <ItemRow item={item} onOpen={setOpenItemId} onStatusChange={setStatus} />
+        {(() => {
+          const renderGroup = (g, compact) => {
+            const isCollapsed = !specificValue && !search.trim() && !expanded.has(g.key);
+            const doneCount = g.items.filter((i) => i.status === "complete").length;
+            return (
+              <div key={g.key} style={{ marginBottom: 8, marginLeft: compact ? 18 : 0 }}>
+                {!specificValue && (
+                  <>
+                    <button className="sd-group-header" onClick={() => setExpanded((prev) => { const next = new Set(prev); next.has(g.key) ? next.delete(g.key) : next.add(g.key); return next; })}
+                      style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", cursor: "pointer", padding: "10px 2px", textAlign: "left" }}>
+                      {isCollapsed ? <ChevronRight size={14} color={T.inkSoft} /> : <ChevronDown size={14} color={T.inkSoft} />}
+                      <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: compact ? 14.5 : 16, fontWeight: compact ? 700 : 800, color: compact ? T.inkSoft : T.ink }}>{g.key}</span>
+                      <span style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>{doneCount}/{g.items.length} done</span>
+                    </button>
+                    {!isCollapsed && (
+                      <NoteBlock
+                        compact
+                        value={categoryNotes[g.key]}
+                        isAdmin={isAdmin}
+                        editing={editingCategoryNoteFor === g.key}
+                        onStartEdit={() => setEditingCategoryNoteFor(g.key)}
+                        onCancelEdit={() => setEditingCategoryNoteFor("")}
+                        onSave={(text) => saveCategoryNote(g.key, text)}
+                        label={g.key}
+                      />
+                    )}
+                  </>
+                )}
+                {!isCollapsed && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
+                    {g.items.map((item) => (
+                      isAdmin ? (
+                        <div
+                          key={item.id}
+                          draggable
+                          onDragStart={(e) => { setDraggedItemId(item.id); e.dataTransfer.effectAllowed = "move"; }}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => { e.preventDefault(); if (draggedItemId) reorderWithinGroup(g.items, draggedItemId, item.id); setDraggedItemId(null); }}
+                          onDragEnd={() => setDraggedItemId(null)}
+                          style={{ display: "flex", alignItems: "center", gap: 4, opacity: draggedItemId === item.id ? 0.4 : 1 }}
+                        >
+                          <GripVertical size={16} color={T.inkSoft} style={{ flexShrink: 0, cursor: "grab" }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <ItemRow item={item} onOpen={setOpenItemId} onStatusChange={setStatus} />
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <ItemRow key={item.id} item={item} onOpen={setOpenItemId} onStatusChange={setStatus} />
-                    )
-                  ))}
+                      ) : (
+                        <ItemRow key={item.id} item={item} onOpen={setOpenItemId} onStatusChange={setStatus} />
+                      )
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          };
+
+          if (nestedAllGroups) {
+            return nestedAllGroups.map((entry) => {
+              if (!entry.isSuper) return renderGroup(entry, false);
+              const superKey = `super:${entry.key}`;
+              const superCollapsed = !search.trim() && !expanded.has(superKey);
+              const superDone = entry.subGroups.reduce((sum, sg) => sum + sg.items.filter((i) => i.status === "complete").length, 0);
+              return (
+                <div key={superKey} style={{ marginBottom: 10, borderLeft: `2px solid ${T.line}`, paddingLeft: 4 }}>
+                  <button className="sd-group-header" onClick={() => setExpanded((prev) => { const next = new Set(prev); next.has(superKey) ? next.delete(superKey) : next.add(superKey); return next; })}
+                    style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", cursor: "pointer", padding: "10px 2px", textAlign: "left" }}>
+                    {superCollapsed ? <ChevronRight size={16} color={T.ink} /> : <ChevronDown size={16} color={T.ink} />}
+                    <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17.5, fontWeight: 800, color: T.ink }}>{entry.key}</span>
+                    <span style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>{superDone}/{entry.totalItems} done</span>
+                  </button>
+                  {!superCollapsed && entry.subGroups.map((sg) => renderGroup(sg, true))}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            });
+          }
+          return groups.map((g) => renderGroup(g, false));
+        })()}
 
         {filtered.length === 0 && (
           <div style={{ textAlign: "center", padding: "60px 0", color: T.inkSoft }}>
