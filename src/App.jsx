@@ -48,6 +48,13 @@ const STYLE_LIST = [
   { name: "Art Deco", accent: "#B08A3E" },
 ];
 const STYLE_NAMES = [...STYLE_LIST.map((s) => s.name), "Fantasy", "None"];
+// A curated subset used for automatically generating one item per style per
+// category — not every one of the 15 styles needs its own item in every
+// single category. The full STYLE_LIST stays available in dropdowns for
+// anyone who wants to manually set an item to one of the others.
+const DEFAULT_GENERATION_STYLES = STYLE_LIST.filter((s) =>
+  ["Modern", "Farmhouse", "Gothic", "Bohemian", "Coastal", "Industrial", "Mid-Century Modern"].includes(s.name)
+);
 
 const CATEGORY_TYPES = [
   // Furniture
@@ -303,6 +310,13 @@ const TABLE_MIRRORS = [
   { name: "Gothic Table Mirror", room: "Bedroom", style: "Gothic" },
   { name: "Bohemian Table Mirror", room: "Bedroom", style: "Bohemian" },
 ];
+// Freestanding shelving units — distinct from the wall-mounted "Shelf".
+const STANDING_SHELVES = [
+  { name: "Modern Standing Shelf Unit", room: "Living Room", style: "Modern" },
+  { name: "Rustic Standing Shelf Unit", room: "Living Room", style: "Rustic" },
+  { name: "Industrial Standing Shelf Unit", room: "Office", style: "Industrial" },
+  { name: "Ladder-Style Standing Shelf Unit", room: "Living Room" },
+];
 // Fantasy is a selectable style (see STYLE_NAMES), not its own item type —
 // these items slot into existing decor types (Wall Art, Decorative Object)
 // with style: "Fantasy", rather than getting a dedicated category, and
@@ -369,6 +383,7 @@ const ARCHITECTURE_ITEMS = [
   { type: "Fireplace", room: "Living Room", variants: ["Modern Linear", "Classic Brick", "Rustic Stone", "Gothic Ornate", "Farmhouse Whitewashed"] },
   { type: "Window", room: "Living Room", variants: ["Modern Casement", "Classic Divided-Light", "Arched Gothic", "Farmhouse", "Bay Window"] },
   { type: "Door", room: "Entryway", variants: ["Modern Flush", "Classic Panel", "Farmhouse Barn", "Gothic Arched", "French Double"] },
+  { type: "Staircase", room: "Hallway", variants: ["Straight Staircase", "Spiral Staircase", "L-Shaped Staircase", "U-Shaped Staircase", "Floating Staircase"] },
   { type: "Stair Runner", room: "Hallway", variants: ["Striped Classic", "Solid Modern", "Floral Vintage", "Bold Geometric"] },
   { type: "Stair Tile", room: "Hallway", variants: ["Marble Look", "Wood-Look Plank", "Moroccan Pattern", "Modern Concrete"] },
   { type: "Backsplash Tile", room: "Kitchen", variants: ["Classic Subway", "Herringbone", "Moroccan Pattern", "Modern Slab", "Farmhouse Beadboard"] },
@@ -400,8 +415,8 @@ const NEW_ROOM_ESSENTIAL_TYPES = [
 ];
 const ELECTRONICS_TYPES = ["Television", "Phone", "Tablet", "Laptop", "Desktop Computer", "Gaming Console", "Smart Speaker"];
 const PLANT_TYPES = PLANT_GROUPS.map((g) => g.type);
-const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), ...PLANT_TYPES, "Miscellaneous", ...KITCHEN_MODULE_TYPES, "Hanging Chair", ...NEW_DECOR_TYPES, ...ARCHITECTURE_TYPES, ...NEW_ROOM_ESSENTIAL_TYPES, ...ELECTRONICS_TYPES];
-const FURNITURE_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Furniture").map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Hanging Chair", ...NEW_ROOM_ESSENTIAL_TYPES, ...ELECTRONICS_TYPES];
+const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), ...PLANT_TYPES, "Miscellaneous", ...KITCHEN_MODULE_TYPES, "Hanging Chair", "Standing Shelf Unit", ...NEW_DECOR_TYPES, ...ARCHITECTURE_TYPES, ...NEW_ROOM_ESSENTIAL_TYPES, ...ELECTRONICS_TYPES];
+const FURNITURE_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Furniture").map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Hanging Chair", "Standing Shelf Unit", ...NEW_ROOM_ESSENTIAL_TYPES, ...ELECTRONICS_TYPES];
 const DECOR_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Decor").map((c) => c.singular), ...PLANT_TYPES, "Miscellaneous", ...NEW_DECOR_TYPES];
 const MISC_TYPES = ["Miscellaneous"];
 const KITCHEN_TYPES = KITCHEN_MODULE_TYPES;
@@ -420,11 +435,12 @@ const SUPER_CATEGORIES = {
   "Lighting": ["Table Lamp", "Floor Lamp", "Wall Lamp", "Ceiling Light", "Chandelier", "Pendant Light", "Stained Glass Lamp", "LED Lights", "Outdoor Lantern"],
   "Beds": ["Bed", "Bunk Bed", "Toddler Bed", "Crib"],
   "Sofas": ["Sofa", "Loveseat"],
-  "Storage & Shelving": ["Dresser", "Wardrobe", "Nightstand", "Bookcase", "Shelf", "TV Stand", "Storage Trunk", "Filing Cabinet", "Room Divider", "Bar Cart"],
+  "Storage & Shelving": ["Dresser", "Wardrobe", "Nightstand", "Bookcase", "Shelf", "TV Stand", "Storage Trunk", "Filing Cabinet", "Room Divider", "Bar Cart", "Standing Shelf Unit"],
   "Benches & Lounging": ["Bench", "Garden Bench", "Ottoman", "Hammock"],
   "Structural Trim": ["Crown Molding", "Baseboard", "Door Casing"],
+  "Stairs": ["Staircase", "Stair Runner", "Stair Tile"],
   "Doors & Windows": ["Door", "Window"],
-  "Textiles & Rugs": ["Rug", "Throw Pillow", "Curtains", "Door Mat", "Stair Runner"],
+  "Textiles & Rugs": ["Rug", "Throw Pillow", "Curtains", "Door Mat"],
   "Wall Decor": ["Wall Art", "Painting", "Photo Frame", "Tapestry", "Clock"],
   "Sculptural Decor": ["Sculpture", "Garden Statue", "Decorative Object"],
   "Candles & Holders": ["Candle", "Candle Holder"],
@@ -435,7 +451,7 @@ const SUPER_CATEGORIES = {
   "Drinkware": ["Cup", "Drink Content", "Spilt Drink"],
   "Shopping & Beauty": ["Shopping Bag", "Makeup"],
   "Kitchen Cabinet System": ["Base Cabinet", "Door Profile", "Handle", "Toe Kick", "Worktop Thickness", "Worktop Edge Profile"],
-  "Finishes & Fixtures": ["Fireplace", "Stair Tile", "Backsplash Tile"],
+  "Finishes & Fixtures": ["Fireplace", "Backsplash Tile"],
   "Bathroom Fixtures": ["Toilet", "Bathtub", "Shower", "Bathroom Vanity"],
   "Kitchen Appliances": ["Kitchen Sink", "Stove", "Oven", "Refrigerator", "Dishwasher", "Microwave", "Range Hood"],
   "Laundry Appliances": ["Washer", "Dryer"],
@@ -567,7 +583,7 @@ function typeGroupFor(typeName, customTypes = []) {
   if (PLANT_TYPES.includes(typeName)) return "Decor";
   if (typeName === "Miscellaneous") return "Misc";
   if (KITCHEN_MODULE_TYPES.includes(typeName)) return "Kitchen";
-  if (typeName === "Hanging Chair") return "Furniture";
+  if (typeName === "Hanging Chair" || typeName === "Standing Shelf Unit") return "Furniture";
   if (typeName === "Standing Mirror") return "Decor";
   if (NEW_DECOR_TYPES.includes(typeName)) return "Decor";
   if (ARCHITECTURE_TYPES.includes(typeName)) return "Architecture";
@@ -580,8 +596,9 @@ function buildSeedItems() {
   const items = [];
   let idx = 0;
 
-  // Every style gets every object type — full coverage, all starting Not Started.
-  for (const style of STYLE_LIST) {
+  // A curated 7-style set per category, not the full 15 — everything else
+  // starts Not Started so this is fast to model out at a manageable scale.
+  for (const style of DEFAULT_GENERATION_STYLES) {
     for (const cat of CATEGORY_TYPES) {
       const now = Date.now() - (idx % 90) * 86400000;
       items.push({
@@ -730,6 +747,7 @@ function buildSeedItems() {
     { list: COAT_HANGERS, type: "Coat Hanger", typeGroup: "Decor" },
     { list: STANDING_MIRRORS, type: "Standing Mirror", typeGroup: "Decor" },
     { list: TABLE_MIRRORS, type: "Table Mirror", typeGroup: "Decor" },
+    { list: STANDING_SHELVES, type: "Standing Shelf Unit", typeGroup: "Furniture" },
   ];
   for (const group of smallPropLists) {
     for (const obj of group.list) {
