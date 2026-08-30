@@ -193,7 +193,18 @@ const KITCHEN_WORKTOP_EDGE_PROFILES = [
   "Chamfered Edge",
   "Double Bullnose Edge",
 ];
-const KITCHEN_MODULE_TYPES = ["Door Profile", "Handle", "Toe Kick", "Worktop Thickness", "Worktop Edge Profile"];
+// The actual cabinet carcass/box — universal sizes, not per-style, since
+// door profiles are what carry the style; this is the structural module
+// they attach to.
+const KITCHEN_BASE_CABINETS = [
+  "18\" Base Cabinet",
+  "24\" Base Cabinet",
+  "30\" Base Cabinet",
+  "36\" Base Cabinet",
+  "Corner Base Cabinet",
+  "Sink Base Cabinet",
+];
+const KITCHEN_MODULE_TYPES = ["Base Cabinet", "Door Profile", "Handle", "Toe Kick", "Worktop Thickness", "Worktop Edge Profile"];
 
 // ============================== NEW ADDITIONS ==============================
 // Small, specific decor props — each gets only as many variants as makes
@@ -306,6 +317,39 @@ const FANTASY_ITEMS = [
   { name: "Crystal Cluster Decor", type: "Decorative Object", room: "Bedroom" },
 ];
 
+// Fixtures/appliances a full room build genuinely can't skip — bathrooms
+// need a toilet and tub, kitchens need appliances, laundry rooms need a
+// washer and dryer. A handful of practical variants each, not a full
+// 15-style sweep, since these are functional fixtures first.
+const BATHROOM_FIXTURES = [
+  { list: ["Modern Toilet", "Classic Toilet", "Wall-Mounted Toilet"], type: "Toilet" },
+  { list: ["Freestanding Tub", "Built-In Alcove Tub", "Clawfoot Tub", "Corner Tub"], type: "Bathtub" },
+  { list: ["Walk-In Glass Shower", "Shower-Tub Combo", "Corner Shower Enclosure"], type: "Shower" },
+  { list: ["Modern Bathroom Vanity", "Farmhouse Bathroom Vanity", "Vintage Bathroom Vanity", "Floating Bathroom Vanity"], type: "Bathroom Vanity" },
+];
+const KITCHEN_APPLIANCES = [
+  { list: ["Single Basin Kitchen Sink", "Double Basin Kitchen Sink", "Farmhouse Apron Sink"], type: "Kitchen Sink" },
+  { list: ["Gas Range", "Electric Range", "Induction Range"], type: "Stove" },
+  { list: ["Built-In Wall Oven", "Double Wall Oven"], type: "Oven" },
+  { list: ["Standard Refrigerator", "French Door Refrigerator", "Counter-Depth Refrigerator"], type: "Refrigerator" },
+  { list: ["Built-In Dishwasher", "Panel-Ready Dishwasher"], type: "Dishwasher" },
+  { list: ["Countertop Microwave", "Over-the-Range Microwave"], type: "Microwave" },
+  { list: ["Wall-Mount Range Hood", "Island Range Hood"], type: "Range Hood" },
+];
+const LAUNDRY_APPLIANCES = [
+  { list: ["Front-Load Washer", "Top-Load Washer"], type: "Washer" },
+  { list: ["Electric Dryer", "Gas Dryer"], type: "Dryer" },
+];
+const LIVING_ROOM_ESSENTIALS = [
+  { list: ["Flat-Screen TV (55\")", "Flat-Screen TV (65\")", "Vintage TV"], type: "Television" },
+];
+const ROOM_ESSENTIAL_GROUPS = [
+  ...BATHROOM_FIXTURES.map((g) => ({ ...g, room: "Bathroom" })),
+  ...KITCHEN_APPLIANCES.map((g) => ({ ...g, room: "Kitchen" })),
+  ...LAUNDRY_APPLIANCES.map((g) => ({ ...g, room: "Laundry Room" })),
+  ...LIVING_ROOM_ESSENTIALS.map((g) => ({ ...g, room: "Living Room" })),
+];
+
 // Architectural / build elements — its own sort category (like Kitchen
 // System), since these don't fit naturally under Furniture or Decor. Each
 // gets its own small set of trim-specific styles/shapes, not the general
@@ -339,11 +383,16 @@ const NEW_DECOR_TYPES = [
   "Stained Glass Lamp", "Candle Holder", "Teddy Bear", "Vinyl & Radio",
   "Card Games", "Globe & Map", "Seashell Decor", "LED Lights",
   "Spilt Drink", "Shopping Bag", "Makeup", "Fruit Bowl", "Coat Hanger", "Cup", "Drink Content",
-  "Table Mirror",
+  "Table Mirror", "Standing Mirror",
 ];
-const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Plant", "Miscellaneous", ...KITCHEN_MODULE_TYPES, "Hanging Chair", "Standing Mirror", ...NEW_DECOR_TYPES, ...ARCHITECTURE_TYPES];
-const FURNITURE_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Furniture").map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Hanging Chair", "Standing Mirror"];
-const DECOR_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Decor").map((c) => c.singular), "Plant", "Miscellaneous", ...NEW_DECOR_TYPES];
+const NEW_ROOM_ESSENTIAL_TYPES = [
+  "Toilet", "Bathtub", "Shower", "Bathroom Vanity",
+  "Kitchen Sink", "Stove", "Oven", "Refrigerator", "Dishwasher", "Microwave", "Range Hood",
+  "Washer", "Dryer", "Television",
+];
+const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Plant", "Miscellaneous", ...KITCHEN_MODULE_TYPES, "Hanging Chair", ...NEW_DECOR_TYPES, ...ARCHITECTURE_TYPES, ...NEW_ROOM_ESSENTIAL_TYPES];
+const FURNITURE_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Furniture").map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Hanging Chair"];
+const DECOR_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Decor").map((c) => c.singular), "Plant", "Miscellaneous", ...NEW_DECOR_TYPES, ...NEW_ROOM_ESSENTIAL_TYPES];
 const MISC_TYPES = ["Miscellaneous"];
 const KITCHEN_TYPES = KITCHEN_MODULE_TYPES;
 
@@ -375,8 +424,11 @@ const SUPER_CATEGORIES = {
   "Nostalgia & Novelty": ["Vinyl & Radio", "Globe & Map", "Teddy Bear", "Seashell Decor"],
   "Drinkware": ["Cup", "Drink Content", "Spilt Drink"],
   "Shopping & Beauty": ["Shopping Bag", "Makeup"],
-  "Kitchen Cabinet System": ["Door Profile", "Handle", "Toe Kick", "Worktop Thickness", "Worktop Edge Profile"],
+  "Kitchen Cabinet System": ["Base Cabinet", "Door Profile", "Handle", "Toe Kick", "Worktop Thickness", "Worktop Edge Profile"],
   "Finishes & Fixtures": ["Fireplace", "Stair Tile", "Backsplash Tile"],
+  "Bathroom Fixtures": ["Toilet", "Bathtub", "Shower", "Bathroom Vanity"],
+  "Kitchen Appliances": ["Kitchen Sink", "Stove", "Oven", "Refrigerator", "Dishwasher", "Microwave", "Range Hood"],
+  "Laundry Appliances": ["Washer", "Dryer"],
 };
 const TYPE_TO_SUPER_CATEGORY = {};
 for (const [superName, memberTypes] of Object.entries(SUPER_CATEGORIES)) {
@@ -397,7 +449,7 @@ function uid(prefix) {
 // Bump this only when buildSeedItems() changes in a way that needs a fresh
 // reconciliation pass (new category, structural fix, etc). Otherwise the
 // background cleanup below skips itself entirely on every normal load.
-const RECONCILIATION_VERSION = "v6";
+const RECONCILIATION_VERSION = "v7";
 
 // Realtime is currently disabled — the WebSocket connection was failing
 // outright (401 on every attempt) and kept retrying indefinitely at the
@@ -503,7 +555,8 @@ function typeGroupFor(typeName, customTypes = []) {
   if (typeName === "Plant") return "Decor";
   if (typeName === "Miscellaneous") return "Misc";
   if (KITCHEN_MODULE_TYPES.includes(typeName)) return "Kitchen";
-  if (typeName === "Hanging Chair" || typeName === "Standing Mirror") return "Furniture";
+  if (typeName === "Hanging Chair") return "Furniture";
+  if (typeName === "Standing Mirror") return "Decor";
   if (NEW_DECOR_TYPES.includes(typeName)) return "Decor";
   if (ARCHITECTURE_TYPES.includes(typeName)) return "Architecture";
   const custom = customTypes.find((c) => c.name === typeName);
@@ -616,10 +669,12 @@ function buildSeedItems() {
       idx++;
     }
   }
-  // Worktop thickness and edge profile — universal technical specs, not tied to any style.
+  // Worktop thickness, edge profile, and base cabinet sizes — universal
+  // technical specs/modules, not tied to any style.
   const kitchenUniversal = [
     { list: KITCHEN_WORKTOP_THICKNESSES, type: "Worktop Thickness" },
     { list: KITCHEN_WORKTOP_EDGE_PROFILES, type: "Worktop Edge Profile" },
+    { list: KITCHEN_BASE_CABINETS, type: "Base Cabinet" },
   ];
   for (const group of kitchenUniversal) {
     for (const name of group.list) {
@@ -658,7 +713,7 @@ function buildSeedItems() {
     { list: MAKEUP_ITEMS, type: "Makeup", typeGroup: "Decor" },
     { list: FRUIT_BOWLS, type: "Fruit Bowl", typeGroup: "Decor" },
     { list: COAT_HANGERS, type: "Coat Hanger", typeGroup: "Decor" },
-    { list: STANDING_MIRRORS, type: "Standing Mirror", typeGroup: "Furniture" },
+    { list: STANDING_MIRRORS, type: "Standing Mirror", typeGroup: "Decor" },
     { list: TABLE_MIRRORS, type: "Table Mirror", typeGroup: "Decor" },
   ];
   for (const group of smallPropLists) {
@@ -699,6 +754,29 @@ function buildSeedItems() {
       updatedAt: now,
     });
     idx++;
+  }
+
+  // Essential room fixtures/appliances — a bathroom needs a toilet and tub,
+  // a kitchen needs appliances, laundry needs a washer and dryer. Filed
+  // under Decor (they're fixtures, not "furniture" in the load-bearing
+  // sense) so they're easy to find alongside everything else in that room.
+  for (const group of ROOM_ESSENTIAL_GROUPS) {
+    for (const name of group.list) {
+      const now = Date.now() - (idx % 90) * 86400000;
+      items.push({
+        id: uid("item"),
+        name,
+        type: group.type,
+        typeGroup: "Decor",
+        room: group.room,
+        style: "None",
+        status: "not-started",
+        photo: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      idx++;
+    }
   }
 
   // Architecture / build elements — its own sort category, with trim-specific
@@ -1537,17 +1615,26 @@ function SortMenu({ organizeKey, specificValue, onPick, organizeOptions, isAdmin
                       <>
                         {superEntries.map((sup) => (
                           <div key={sup.name}>
-                            <button
-                              onClick={() => setExpandedSuper((v) => (v === sup.name ? "" : sup.name))}
-                              style={{
-                                display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 13,
-                                background: "none", border: "none", borderRadius: 10, cursor: "pointer", color: T.ink,
-                                fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700,
-                              }}
-                            >
-                              {expandedSuper === sup.name ? <ChevronDown size={13} color={T.inkSoft} /> : <ChevronRight size={13} color={T.inkSoft} />}
-                              {sup.name}
-                            </button>
+                            <div style={{ display: "flex", alignItems: "stretch" }}>
+                              <button
+                                onClick={() => { onPick(o.key, sup.name); setOpen(false); }}
+                                style={{
+                                  flex: 1, textAlign: "left", padding: "8px 12px", fontSize: 13,
+                                  background: organizeKey === o.key && specificValue === sup.name ? "rgba(255,255,255,0.06)" : "none",
+                                  border: "none", borderRadius: 10, cursor: "pointer", color: T.ink,
+                                  fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700,
+                                }}
+                              >
+                                {sup.name} <span style={{ color: T.inkSoft, fontWeight: 500, fontSize: 11.5 }}>— show all</span>
+                              </button>
+                              <button
+                                onClick={() => setExpandedSuper((v) => (v === sup.name ? "" : sup.name))}
+                                title={`Pick a specific ${sup.name.toLowerCase()}`}
+                                style={{ width: 30, background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+                              >
+                                {expandedSuper === sup.name ? <ChevronDown size={13} color={T.inkSoft} /> : <ChevronRight size={13} color={T.inkSoft} />}
+                              </button>
+                            </div>
                             {expandedSuper === sup.name && (
                               <div style={{ paddingLeft: 18 }}>
                                 {sup.members.map((v) => (
@@ -2323,13 +2410,19 @@ export default function ModelingLibraryApp() {
     const s = search.trim().toLowerCase();
     if (s) res = res.filter((i) => [i.name, i.type, i.room, i.style].join(" ").toLowerCase().includes(s));
     if (specificValue) {
-      res = res.filter((i) => i[organizeMode.field] === specificValue);
+      if (SUPER_CATEGORIES[specificValue]) {
+        res = res.filter((i) => SUPER_CATEGORIES[specificValue].includes(i.type));
+      } else {
+        res = res.filter((i) => i[organizeMode.field] === specificValue);
+      }
     } else if (organizeKey === "furniture") {
       res = res.filter((i) => i.typeGroup === "Furniture");
     } else if (organizeKey === "decor") {
       res = res.filter((i) => i.typeGroup === "Decor" || i.typeGroup === "Misc");
     } else if (organizeKey === "kitchen") {
       res = res.filter((i) => i.typeGroup === "Kitchen");
+    } else if (organizeKey === "architecture") {
+      res = res.filter((i) => i.typeGroup === "Architecture");
     }
     return res;
   }, [items, search, specificValue, organizeMode, organizeKey]);
@@ -2343,7 +2436,22 @@ export default function ModelingLibraryApp() {
       if (bo == null) return -1;
       return ao - bo || byName(a, b);
     };
-    if (specificValue) return [{ key: specificValue, items: [...filtered].sort(byOrder) }];
+    if (specificValue) {
+      if (SUPER_CATEGORIES[specificValue]) {
+        // A super-category was picked directly (e.g. clicking "Beds" itself,
+        // not drilling into "Bunk Bed" specifically) — show its member
+        // types as their own sections, same shape as the normal grouped view.
+        const map = new Map();
+        for (const item of filtered) {
+          if (!map.has(item.type)) map.set(item.type, []);
+          map.get(item.type).push(item);
+        }
+        return SUPER_CATEGORIES[specificValue]
+          .filter((t) => map.has(t))
+          .map((t) => ({ key: t, items: map.get(t).sort(byOrder) }));
+      }
+      return [{ key: specificValue, items: [...filtered].sort(byOrder) }];
+    }
     const map = new Map();
     for (const item of filtered) {
       const k = item[organizeMode.field];
