@@ -385,8 +385,9 @@ const ARCHITECTURE_ITEMS = [
   { type: "Door", room: "Entryway", variants: ["Modern Flush", "Classic Panel", "Farmhouse Barn", "Gothic Arched", "French Double"] },
   { type: "Staircase", room: "Hallway", variants: ["Straight Staircase", "Spiral Staircase", "L-Shaped Staircase", "U-Shaped Staircase", "Floating Staircase"] },
   { type: "Stair Runner", room: "Hallway", variants: ["Striped Classic", "Solid Modern", "Floral Vintage", "Bold Geometric"] },
-  { type: "Stair Tile", room: "Hallway", variants: ["Marble Look", "Wood-Look Plank", "Moroccan Pattern", "Modern Concrete"] },
-  { type: "Backsplash Tile", room: "Kitchen", variants: ["Classic Subway", "Herringbone", "Moroccan Pattern", "Modern Slab", "Farmhouse Beadboard"] },
+  // A generic, reusable tile shape — not tied to backsplash or stairs
+  // specifically, so it can be used anywhere a tile is needed.
+  { type: "Tile", room: "Kitchen", variants: ["Square", "Rectangle"] },
 ];
 const ARCHITECTURE_TYPES = ARCHITECTURE_ITEMS.map((a) => a.type);
 
@@ -438,7 +439,7 @@ const SUPER_CATEGORIES = {
   "Storage & Shelving": ["Dresser", "Wardrobe", "Nightstand", "Bookcase", "Shelf", "TV Stand", "Storage Trunk", "Filing Cabinet", "Room Divider", "Bar Cart", "Standing Shelf Unit"],
   "Benches & Lounging": ["Bench", "Garden Bench", "Ottoman", "Hammock"],
   "Structural Trim": ["Crown Molding", "Baseboard", "Door Casing"],
-  "Stairs": ["Staircase", "Stair Runner", "Stair Tile"],
+  "Stairs": ["Staircase", "Stair Runner"],
   "Doors & Windows": ["Door", "Window"],
   "Textiles & Rugs": ["Rug", "Throw Pillow", "Curtains", "Door Mat"],
   "Wall Decor": ["Wall Art", "Painting", "Photo Frame", "Tapestry", "Clock"],
@@ -451,7 +452,6 @@ const SUPER_CATEGORIES = {
   "Drinkware": ["Cup", "Drink Content", "Spilt Drink"],
   "Shopping & Beauty": ["Shopping Bag", "Makeup"],
   "Kitchen Cabinet System": ["Base Cabinet", "Door Profile", "Handle", "Toe Kick", "Worktop Thickness", "Worktop Edge Profile"],
-  "Finishes & Fixtures": ["Fireplace", "Backsplash Tile"],
   "Bathroom Fixtures": ["Toilet", "Bathtub", "Shower", "Bathroom Vanity"],
   "Kitchen Appliances": ["Kitchen Sink", "Stove", "Oven", "Refrigerator", "Dishwasher", "Microwave", "Range Hood"],
   "Laundry Appliances": ["Washer", "Dryer"],
@@ -477,7 +477,7 @@ function uid(prefix) {
 // Bump this only when buildSeedItems() changes in a way that needs a fresh
 // reconciliation pass (new category, structural fix, etc). Otherwise the
 // background cleanup below skips itself entirely on every normal load.
-const RECONCILIATION_VERSION = "v8";
+const RECONCILIATION_VERSION = "v9";
 
 // Realtime is currently disabled — the WebSocket connection was failing
 // outright (401 on every attempt) and kept retrying indefinitely at the
