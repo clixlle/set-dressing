@@ -278,6 +278,31 @@ const COAT_HANGERS = [
   { name: "Wall-Mounted Coat Hooks", room: "Entryway" },
   { name: "Vintage Standing Coat Rack", room: "Entryway" },
 ];
+const STANDING_MIRRORS = [
+  { name: "Modern Standing Mirror", room: "Bedroom", style: "Modern" },
+  { name: "Gothic Standing Mirror", room: "Bedroom", style: "Gothic" },
+  { name: "Art Deco Standing Mirror", room: "Bedroom", style: "Art Deco" },
+  { name: "Farmhouse Standing Mirror", room: "Bedroom", style: "Farmhouse" },
+  { name: "Vintage Standing Mirror", room: "Bedroom", style: "Vintage" },
+];
+const TABLE_MIRRORS = [
+  { name: "Modern Table Mirror", room: "Bedroom", style: "Modern" },
+  { name: "Vintage Table Mirror", room: "Bathroom", style: "Vintage" },
+  { name: "Gothic Table Mirror", room: "Bedroom", style: "Gothic" },
+  { name: "Bohemian Table Mirror", room: "Bedroom", style: "Bohemian" },
+];
+// Whimsical/fantasy wall decor — its own small theme, not tied to the
+// general interior styles at all.
+const FANTASY_DECOR = [
+  { name: "Butterfly Wall Decor", room: "Bedroom" },
+  { name: "Fairy Wall Decor", room: "Nursery" },
+  { name: "Dragonfly Wall Decor", room: "Kids Room" },
+  { name: "Celestial Moon & Star Wall Decor", room: "Bedroom" },
+  { name: "Mushroom Fairycore Decor", room: "Bedroom" },
+  { name: "Crystal Cluster Decor", room: "Bedroom" },
+  { name: "Enchanted Vine Wall Decor", room: "Living Room" },
+  { name: "Unicorn Wall Decor", room: "Kids Room" },
+];
 
 // Architectural / build elements — its own sort category (like Kitchen
 // System), since these don't fit naturally under Furniture or Decor. Each
@@ -312,9 +337,10 @@ const NEW_DECOR_TYPES = [
   "Stained Glass Lamp", "Candle Holder", "Teddy Bear", "Vinyl & Radio",
   "Card Games", "Globe & Map", "Seashell Decor", "LED Lights",
   "Spilt Drink", "Shopping Bag", "Makeup", "Fruit Bowl", "Coat Hanger", "Cup", "Drink Content",
+  "Table Mirror", "Fantasy Decor",
 ];
-const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Plant", "Miscellaneous", ...KITCHEN_MODULE_TYPES, "Hanging Chair", ...NEW_DECOR_TYPES, ...ARCHITECTURE_TYPES];
-const FURNITURE_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Furniture").map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Hanging Chair"];
+const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Plant", "Miscellaneous", ...KITCHEN_MODULE_TYPES, "Hanging Chair", "Standing Mirror", ...NEW_DECOR_TYPES, ...ARCHITECTURE_TYPES];
+const FURNITURE_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Furniture").map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Hanging Chair", "Standing Mirror"];
 const DECOR_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Decor").map((c) => c.singular), "Plant", "Miscellaneous", ...NEW_DECOR_TYPES];
 const MISC_TYPES = ["Miscellaneous"];
 const KITCHEN_TYPES = KITCHEN_MODULE_TYPES;
@@ -334,7 +360,7 @@ function uid(prefix) {
 // Bump this only when buildSeedItems() changes in a way that needs a fresh
 // reconciliation pass (new category, structural fix, etc). Otherwise the
 // background cleanup below skips itself entirely on every normal load.
-const RECONCILIATION_VERSION = "v4";
+const RECONCILIATION_VERSION = "v5";
 
 // Realtime is currently disabled — the WebSocket connection was failing
 // outright (401 on every attempt) and kept retrying indefinitely at the
@@ -440,7 +466,7 @@ function typeGroupFor(typeName, customTypes = []) {
   if (typeName === "Plant") return "Decor";
   if (typeName === "Miscellaneous") return "Misc";
   if (KITCHEN_MODULE_TYPES.includes(typeName)) return "Kitchen";
-  if (typeName === "Hanging Chair") return "Furniture";
+  if (typeName === "Hanging Chair" || typeName === "Standing Mirror") return "Furniture";
   if (NEW_DECOR_TYPES.includes(typeName)) return "Decor";
   if (ARCHITECTURE_TYPES.includes(typeName)) return "Architecture";
   const custom = customTypes.find((c) => c.name === typeName);
@@ -595,6 +621,9 @@ function buildSeedItems() {
     { list: MAKEUP_ITEMS, type: "Makeup", typeGroup: "Decor" },
     { list: FRUIT_BOWLS, type: "Fruit Bowl", typeGroup: "Decor" },
     { list: COAT_HANGERS, type: "Coat Hanger", typeGroup: "Decor" },
+    { list: STANDING_MIRRORS, type: "Standing Mirror", typeGroup: "Furniture" },
+    { list: TABLE_MIRRORS, type: "Table Mirror", typeGroup: "Decor" },
+    { list: FANTASY_DECOR, type: "Fantasy Decor", typeGroup: "Decor" },
   ];
   for (const group of smallPropLists) {
     for (const obj of group.list) {
