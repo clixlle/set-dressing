@@ -119,13 +119,14 @@ const KIDS_FURNITURE = [
 const KIDS_FURNITURE_VARIANTS = ["Classic", "Painted", "Natural Wood", "Playful"];
 
 // Real plant varieties — plants aren't tied to interior-design styles.
-const PLANTS = [
-  "Monstera", "Fiddle Leaf Fig", "Snake Plant", "Pothos", "Peace Lily",
-  "Succulent Trio", "Areca Palm", "ZZ Plant", "Rubber Plant", "Aloe Vera",
-  "Boston Fern", "Bird of Paradise", "Orchid", "Cactus", "English Ivy",
-  "Spider Plant", "Eucalyptus Bundle", "Lavender Pot", "Rosemary Pot", "Bamboo Stalks",
-  "Hanging Pothos", "Hanging Fern", "Hanging Ivy", "Potted Rose Bush", "Potted Hydrangea",
-  "Herb Garden Box", "Succulent Wall Planter", "Tomato Planter", "Ferns Cluster", "Air Plant Set",
+// Plants, split into a few genuine sub-types so they can sit under one
+// "Plants" umbrella instead of being one flat undifferentiated list.
+const PLANT_GROUPS = [
+  { type: "Hanging Plant", list: ["Hanging Pothos", "Hanging Fern", "Hanging Ivy"] },
+  { type: "Succulent & Cactus", list: ["Succulent Trio", "Aloe Vera", "Cactus", "Air Plant Set", "Succulent Wall Planter"] },
+  { type: "Potted Floor Plant", list: ["Monstera", "Fiddle Leaf Fig", "Areca Palm", "Rubber Plant", "Bird of Paradise", "Bamboo Stalks"] },
+  { type: "Tabletop Plant", list: ["Snake Plant", "Pothos", "Peace Lily", "ZZ Plant", "Boston Fern", "Orchid", "English Ivy", "Spider Plant", "Ferns Cluster"] },
+  { type: "Herb & Garden Plant", list: ["Eucalyptus Bundle", "Lavender Pot", "Rosemary Pot", "Potted Rose Bush", "Potted Hydrangea", "Herb Garden Box", "Tomato Planter"] },
 ];
 
 // Random miscellaneous objects / toys — not tied to a style either.
@@ -340,14 +341,21 @@ const LAUNDRY_APPLIANCES = [
   { list: ["Front-Load Washer", "Top-Load Washer"], type: "Washer" },
   { list: ["Electric Dryer", "Gas Dryer"], type: "Dryer" },
 ];
-const LIVING_ROOM_ESSENTIALS = [
-  { list: ["Flat-Screen TV (55\")", "Flat-Screen TV (65\")", "Vintage TV"], type: "Television" },
-];
 const ROOM_ESSENTIAL_GROUPS = [
   ...BATHROOM_FIXTURES.map((g) => ({ ...g, room: "Bathroom" })),
   ...KITCHEN_APPLIANCES.map((g) => ({ ...g, room: "Kitchen" })),
   ...LAUNDRY_APPLIANCES.map((g) => ({ ...g, room: "Laundry Room" })),
-  ...LIVING_ROOM_ESSENTIALS.map((g) => ({ ...g, room: "Living Room" })),
+];
+
+// Electronics — its own umbrella, filed under Furniture like the appliances above.
+const ELECTRONICS = [
+  { list: ["Flat-Screen TV (55\")", "Flat-Screen TV (65\")", "Vintage TV"], type: "Television", room: "Living Room" },
+  { list: ["Smartphone (Upright)", "Smartphone (Charging on Stand)"], type: "Phone", room: "Bedroom" },
+  { list: ["Tablet (Standing)", "Tablet (Flat on Table)"], type: "Tablet", room: "Living Room" },
+  { list: ["Laptop (Open)", "Laptop (Closed)"], type: "Laptop", room: "Office" },
+  { list: ["Desktop PC Setup", "All-in-One Desktop Computer"], type: "Desktop Computer", room: "Office" },
+  { list: ["Gaming Console with Controller"], type: "Gaming Console", room: "Living Room" },
+  { list: ["Smart Speaker / Assistant"], type: "Smart Speaker", room: "Living Room" },
 ];
 
 // Architectural / build elements — its own sort category (like Kitchen
@@ -388,11 +396,13 @@ const NEW_DECOR_TYPES = [
 const NEW_ROOM_ESSENTIAL_TYPES = [
   "Toilet", "Bathtub", "Shower", "Bathroom Vanity",
   "Kitchen Sink", "Stove", "Oven", "Refrigerator", "Dishwasher", "Microwave", "Range Hood",
-  "Washer", "Dryer", "Television",
+  "Washer", "Dryer",
 ];
-const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Plant", "Miscellaneous", ...KITCHEN_MODULE_TYPES, "Hanging Chair", ...NEW_DECOR_TYPES, ...ARCHITECTURE_TYPES, ...NEW_ROOM_ESSENTIAL_TYPES];
-const FURNITURE_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Furniture").map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Hanging Chair"];
-const DECOR_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Decor").map((c) => c.singular), "Plant", "Miscellaneous", ...NEW_DECOR_TYPES, ...NEW_ROOM_ESSENTIAL_TYPES];
+const ELECTRONICS_TYPES = ["Television", "Phone", "Tablet", "Laptop", "Desktop Computer", "Gaming Console", "Smart Speaker"];
+const PLANT_TYPES = PLANT_GROUPS.map((g) => g.type);
+const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), ...PLANT_TYPES, "Miscellaneous", ...KITCHEN_MODULE_TYPES, "Hanging Chair", ...NEW_DECOR_TYPES, ...ARCHITECTURE_TYPES, ...NEW_ROOM_ESSENTIAL_TYPES, ...ELECTRONICS_TYPES];
+const FURNITURE_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Furniture").map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Hanging Chair", ...NEW_ROOM_ESSENTIAL_TYPES, ...ELECTRONICS_TYPES];
+const DECOR_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Decor").map((c) => c.singular), ...PLANT_TYPES, "Miscellaneous", ...NEW_DECOR_TYPES];
 const MISC_TYPES = ["Miscellaneous"];
 const KITCHEN_TYPES = KITCHEN_MODULE_TYPES;
 
@@ -429,6 +439,8 @@ const SUPER_CATEGORIES = {
   "Bathroom Fixtures": ["Toilet", "Bathtub", "Shower", "Bathroom Vanity"],
   "Kitchen Appliances": ["Kitchen Sink", "Stove", "Oven", "Refrigerator", "Dishwasher", "Microwave", "Range Hood"],
   "Laundry Appliances": ["Washer", "Dryer"],
+  "Plants": PLANT_TYPES,
+  "Electronics": ELECTRONICS_TYPES,
 };
 const TYPE_TO_SUPER_CATEGORY = {};
 for (const [superName, memberTypes] of Object.entries(SUPER_CATEGORIES)) {
@@ -449,7 +461,7 @@ function uid(prefix) {
 // Bump this only when buildSeedItems() changes in a way that needs a fresh
 // reconciliation pass (new category, structural fix, etc). Otherwise the
 // background cleanup below skips itself entirely on every normal load.
-const RECONCILIATION_VERSION = "v7";
+const RECONCILIATION_VERSION = "v8";
 
 // Realtime is currently disabled — the WebSocket connection was failing
 // outright (401 on every attempt) and kept retrying indefinitely at the
@@ -552,7 +564,7 @@ function typeGroupFor(typeName, customTypes = []) {
   const cat = CATEGORY_TYPES.find((c) => c.singular === typeName);
   if (cat) return cat.group;
   if (KIDS_FURNITURE.some((k) => k.name === typeName)) return "Furniture";
-  if (typeName === "Plant") return "Decor";
+  if (PLANT_TYPES.includes(typeName)) return "Decor";
   if (typeName === "Miscellaneous") return "Misc";
   if (KITCHEN_MODULE_TYPES.includes(typeName)) return "Kitchen";
   if (typeName === "Hanging Chair") return "Furniture";
@@ -608,22 +620,25 @@ function buildSeedItems() {
     }
   }
 
-  // Real plants — not tied to a design style.
-  for (const plant of PLANTS) {
-    const now = Date.now() - (idx % 90) * 86400000;
-    items.push({
-      id: uid("item"),
-      name: plant,
-      type: "Plant",
-      typeGroup: "Decor",
-      room: "Living Room",
-      style: "None",
-      status: "not-started",
-      photo: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-    idx++;
+  // Real plants — not tied to a design style. Split into sub-types so they
+  // can sit together under one "Plants" umbrella.
+  for (const group of PLANT_GROUPS) {
+    for (const plant of group.list) {
+      const now = Date.now() - (idx % 90) * 86400000;
+      items.push({
+        id: uid("item"),
+        name: plant,
+        type: group.type,
+        typeGroup: "Decor",
+        room: "Living Room",
+        style: "None",
+        status: "not-started",
+        photo: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      idx++;
+    }
   }
 
   // Miscellaneous objects / toys — also not tied to a style.
@@ -757,9 +772,7 @@ function buildSeedItems() {
   }
 
   // Essential room fixtures/appliances — a bathroom needs a toilet and tub,
-  // a kitchen needs appliances, laundry needs a washer and dryer. Filed
-  // under Decor (they're fixtures, not "furniture" in the load-bearing
-  // sense) so they're easy to find alongside everything else in that room.
+  // a kitchen needs appliances, laundry needs a washer and dryer.
   for (const group of ROOM_ESSENTIAL_GROUPS) {
     for (const name of group.list) {
       const now = Date.now() - (idx % 90) * 86400000;
@@ -767,7 +780,27 @@ function buildSeedItems() {
         id: uid("item"),
         name,
         type: group.type,
-        typeGroup: "Decor",
+        typeGroup: "Furniture",
+        room: group.room,
+        style: "None",
+        status: "not-started",
+        photo: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      idx++;
+    }
+  }
+
+  // Electronics — TVs, phones, tablets, laptops, computers, and so on.
+  for (const group of ELECTRONICS) {
+    for (const name of group.list) {
+      const now = Date.now() - (idx % 90) * 86400000;
+      items.push({
+        id: uid("item"),
+        name,
+        type: group.type,
+        typeGroup: "Furniture",
         room: group.room,
         style: "None",
         status: "not-started",
