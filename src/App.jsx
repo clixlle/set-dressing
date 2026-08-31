@@ -1437,6 +1437,7 @@ function ItemModal({ item, isAdmin, onClose, onSave, onStatusChange, onDelete, f
                   <optgroup label="Decor">{decorTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
                   <optgroup label="Kitchen System">{kitchenTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
                   <optgroup label="Architecture">{architectureTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
+                  <optgroup label="Retired Models">{[RETIRED_TYPE].map((t) => <option key={t}>{t}</option>)}</optgroup>
                 </select>
               </div>
               <div>
