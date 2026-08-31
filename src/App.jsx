@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
-  Search, Plus, X, ChevronDown, ChevronRight, Trash2, Camera, Check, Clock, Circle, Boxes, Loader2, Download, Pencil, ClipboardPaste, GripVertical
+  Search, Plus, X, ChevronDown, ChevronRight, Trash2, Camera, Check, Clock, Circle, Boxes, Loader2, Download, Pencil, ClipboardPaste, GripVertical, FolderInput
 } from "lucide-react";
 import { supabase, rowToItem, itemToRow, supabaseConfigError, signIn, signOut, roleForEmail } from "./supabaseClient";
 
@@ -1581,11 +1581,11 @@ function AddItemModal({ onClose, onCreate, furnitureTypes, decorTypes, kitchenTy
 // list of values for the Sort menu's drill-down. A category only appears as
 // a group here if 2+ of its members are actually present in this list —
 // otherwise the one that is present just shows as a normal standalone row.
-function groupValuesForMenu(values) {
+function groupValuesForMenu(values, typeToSuper) {
   const supers = new Map();
   const standalone = [];
   for (const v of values) {
-    const superName = TYPE_TO_SUPER_CATEGORY[v];
+    const superName = typeToSuper[v];
     if (superName) {
       if (!supers.has(superName)) supers.set(superName, []);
       supers.get(superName).push(v);
@@ -1601,10 +1601,11 @@ function groupValuesForMenu(values) {
   return { superEntries, standalone };
 }
 
-function SortMenu({ organizeKey, specificValue, onPick, organizeOptions, isAdmin, onAddCategory }) {
+function SortMenu({ organizeKey, specificValue, onPick, organizeOptions, isAdmin, onAddCategory, typeToSuper, allSuperNames, onMoveCategory }) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState("");
   const [expandedSuper, setExpandedSuper] = useState("");
+  const [movingType, setMovingType] = useState("");
   const [addingTo, setAddingTo] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const ref = useRef(null);
@@ -1675,7 +1676,48 @@ function SortMenu({ organizeKey, specificValue, onPick, organizeOptions, isAdmin
               {expanded === o.key && (
                 <div style={{ paddingLeft: 10, marginBottom: 4 }}>
                   {(() => {
-                    const { superEntries, standalone } = groupValuesForMenu(o.values);
+                    const { superEntries, standalone } = groupValuesForMenu(o.values, typeToSuper);
+                    const canMove = isAdmin && onMoveCategory && o.field === "type";
+                    const renderValueRow = (v) => (
+                      <div key={v} style={{ display: "flex", alignItems: "center" }}>
+                        {movingType === v ? (
+                          <select
+                            autoFocus
+                            defaultValue={typeToSuper[v] || ""}
+                            onChange={(e) => { onMoveCategory(v, e.target.value); setMovingType(""); }}
+                            onBlur={() => setMovingType("")}
+                            style={{
+                              flex: 1, margin: "3px 6px", padding: "6px 8px", fontSize: 12.5, borderRadius: 8,
+                              background: T.field, color: T.ink, border: "none", fontFamily: "'Plus Jakarta Sans', sans-serif",
+                            }}
+                          >
+                            <option value="">No category (standalone)</option>
+                            {allSuperNames.map((n) => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                        ) : (
+                          <button
+                            onClick={() => { onPick(o.key, v); setOpen(false); }}
+                            style={{
+                              flex: 1, display: "block", textAlign: "left", padding: "7px 12px", fontSize: 12.5,
+                              background: organizeKey === o.key && specificValue === v ? "rgba(255,255,255,0.06)" : "none",
+                              border: "none", borderRadius: 10, cursor: "pointer", color: T.inkSoft,
+                              fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500,
+                            }}
+                          >
+                            {v}
+                          </button>
+                        )}
+                        {canMove && movingType !== v && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setMovingType(v); }}
+                            title={`Move "${v}" to a different category`}
+                            style={{ width: 26, background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: T.inkSoft }}
+                          >
+                            <FolderInput size={13} />
+                          </button>
+                        )}
+                      </div>
+                    );
                     return (
                       <>
                         {superEntries.map((sup) => (
@@ -1702,38 +1744,12 @@ function SortMenu({ organizeKey, specificValue, onPick, organizeOptions, isAdmin
                             </div>
                             {expandedSuper === sup.name && (
                               <div style={{ paddingLeft: 18 }}>
-                                {sup.members.map((v) => (
-                                  <button
-                                    key={v}
-                                    onClick={() => { onPick(o.key, v); setOpen(false); }}
-                                    style={{
-                                      display: "block", width: "100%", textAlign: "left", padding: "7px 12px", fontSize: 12.5,
-                                      background: organizeKey === o.key && specificValue === v ? "rgba(255,255,255,0.06)" : "none",
-                                      border: "none", borderRadius: 10, cursor: "pointer", color: T.inkSoft,
-                                      fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500,
-                                    }}
-                                  >
-                                    {v}
-                                  </button>
-                                ))}
+                                {sup.members.map(renderValueRow)}
                               </div>
                             )}
                           </div>
                         ))}
-                        {standalone.map((v) => (
-                          <button
-                            key={v}
-                            onClick={() => { onPick(o.key, v); setOpen(false); }}
-                            style={{
-                              display: "block", width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 13,
-                              background: organizeKey === o.key && specificValue === v ? "rgba(255,255,255,0.06)" : "none",
-                              border: "none", borderRadius: 10, cursor: "pointer", color: T.inkSoft,
-                              fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500,
-                            }}
-                          >
-                            {v}
-                          </button>
-                        ))}
+                        {standalone.map(renderValueRow)}
                       </>
                     );
                   })()}
@@ -1871,6 +1887,7 @@ export default function ModelingLibraryApp() {
   const [sectionNotes, setSectionNotes] = useState({});
   const [editingNoteFor, setEditingNoteFor] = useState("");
   const [categoryNotes, setCategoryNotes] = useState({});
+  const [categoryOverrides, setCategoryOverrides] = useState({});
   const [editingCategoryNoteFor, setEditingCategoryNoteFor] = useState("");
 
   // Auth: check for an existing session, and keep it in sync if it changes.
@@ -2243,12 +2260,15 @@ export default function ModelingLibraryApp() {
       if (settings) {
         const notes = {};
         const catNotes = {};
+        const catGroups = {};
         for (const row of settings) {
           if (row.key.startsWith("catnote_")) catNotes[row.key.slice("catnote_".length)] = row.value || "";
+          else if (row.key.startsWith("catgroup_")) catGroups[row.key.slice("catgroup_".length)] = row.value || "";
           else if (row.key.startsWith("note_")) notes[row.key.slice("note_".length)] = row.value || "";
         }
         setSectionNotes(notes);
         setCategoryNotes(catNotes);
+        setCategoryOverrides(catGroups);
       }
     })();
 
@@ -2279,6 +2299,8 @@ export default function ModelingLibraryApp() {
         if (!row || !row.key) return;
         if (row.key.startsWith("catnote_")) {
           setCategoryNotes((prev) => ({ ...prev, [row.key.slice("catnote_".length)]: row.value || "" }));
+        } else if (row.key.startsWith("catgroup_")) {
+          setCategoryOverrides((prev) => ({ ...prev, [row.key.slice("catgroup_".length)]: row.value || "" }));
         } else if (row.key.startsWith("note_")) {
           setSectionNotes((prev) => ({ ...prev, [row.key.slice("note_".length)]: row.value || "" }));
         }
@@ -2335,6 +2357,25 @@ export default function ModelingLibraryApp() {
       console.error("Save category note failed:", error);
       setCategoryNotes((prev) => ({ ...prev, [categoryValue]: previousValue }));
       setSyncError(`That note didn't save: ${error.message || "unknown error"}`);
+      return false;
+    }
+    return true;
+  }, []);
+
+  // Lets admin move a type into a different header category (or out to
+  // standalone) without a code change — stored as an override on top of the
+  // built-in defaults, empty string means "no category / standalone".
+  const setCategoryOverride = useCallback(async (typeName, newSuperName) => {
+    let previousValue;
+    setCategoryOverrides((prev) => {
+      previousValue = prev[typeName];
+      return { ...prev, [typeName]: newSuperName };
+    });
+    const { error } = await withAuthRetry(() => supabase.from("app_settings").upsert({ key: `catgroup_${typeName}`, value: newSuperName }));
+    if (error) {
+      console.error("Save category move failed:", error);
+      setCategoryOverrides((prev) => ({ ...prev, [typeName]: previousValue }));
+      setSyncError(`That category move didn't save: ${error.message || "unknown error"}`);
       return false;
     }
     return true;
@@ -2536,12 +2577,30 @@ export default function ModelingLibraryApp() {
   // any unfiltered grouped view (Furniture, Decor, Kitchen System,
   // Architecture, All Items) — Room/Style naturally fall back to their
   // normal flat list since none of their values match a super-category.
+  // Merges admin's category-move overrides on top of the built-in defaults —
+  // an empty string means "pulled out to standalone", anything else means
+  // "moved into that category instead".
+  const effectiveTypeToSuper = useMemo(() => {
+    const merged = { ...TYPE_TO_SUPER_CATEGORY };
+    for (const [type, superName] of Object.entries(categoryOverrides)) {
+      if (superName) merged[type] = superName;
+      else delete merged[type];
+    }
+    return merged;
+  }, [categoryOverrides]);
+
+  const allSuperCategoryNames = useMemo(() => {
+    const names = new Set(Object.keys(SUPER_CATEGORIES));
+    for (const v of Object.values(effectiveTypeToSuper)) names.add(v);
+    return Array.from(names).sort();
+  }, [effectiveTypeToSuper]);
+
   const nestedGroups = useMemo(() => {
     if (specificValue) return null;
     const supers = new Map(); // superName -> [subgroup, ...]
     const standalone = [];
     for (const g of groups) {
-      const superName = TYPE_TO_SUPER_CATEGORY[g.key];
+      const superName = effectiveTypeToSuper[g.key];
       if (superName) {
         if (!supers.has(superName)) supers.set(superName, []);
         supers.get(superName).push(g);
@@ -2571,7 +2630,7 @@ export default function ModelingLibraryApp() {
     superEntries.sort((a, b) => b.totalItems - a.totalItems);
     standalone.sort((a, b) => organizeMode.values.indexOf(a.key) - organizeMode.values.indexOf(b.key));
     return [...superEntries, ...standalone];
-  }, [groups, specificValue, organizeMode]);
+  }, [groups, specificValue, organizeMode, effectiveTypeToSuper]);
 
   const openItem = items && openItemId ? items.find((i) => i.id === openItemId) : null;
 
@@ -2720,7 +2779,8 @@ export default function ModelingLibraryApp() {
           </div>
 
           <SortMenu organizeKey={organizeKey} specificValue={specificValue} onPick={(key, val) => { setOrganizeKey(key); setSpecificValue(val); }}
-            organizeOptions={organizeOptions} isAdmin={isAdmin} onAddCategory={addCategory} />
+            organizeOptions={organizeOptions} isAdmin={isAdmin} onAddCategory={addCategory}
+            typeToSuper={effectiveTypeToSuper} allSuperNames={allSuperCategoryNames} onMoveCategory={setCategoryOverride} />
 
           {specificValue && (
             <button onClick={() => setSpecificValue("")} style={{ fontSize: 12.5, color: T.inkSoft, background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, padding: "6px 2px", minHeight: 32, fontWeight: 600 }}>
