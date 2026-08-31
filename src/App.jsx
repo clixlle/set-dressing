@@ -423,8 +423,11 @@ const PLANT_TYPES = PLANT_GROUPS.map((g) => g.type);
 // disappearing from the app. Nothing new is ever generated under these —
 // they exist purely so old data can never go invisible.
 const LEGACY_TYPES = ["Mirror", "Plant", "Chair", "Fantasy Decor", "Backsplash Tile", "Stair Tile"];
+// Retired Models — a dedicated archive section. Nothing auto-generates
+// here; items only arrive via a deliberate one-time move (see migration).
+const RETIRED_TYPE = "Retired Model";
 
-const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), ...PLANT_TYPES, "Miscellaneous", ...KITCHEN_MODULE_TYPES, "Hanging Chair", "Standing Shelf Unit", ...NEW_DECOR_TYPES, ...ARCHITECTURE_TYPES, ...NEW_ROOM_ESSENTIAL_TYPES, ...ELECTRONICS_TYPES, ...LEGACY_TYPES];
+const TYPE_NAMES = [...CATEGORY_TYPES.map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), ...PLANT_TYPES, "Miscellaneous", ...KITCHEN_MODULE_TYPES, "Hanging Chair", "Standing Shelf Unit", ...NEW_DECOR_TYPES, ...ARCHITECTURE_TYPES, ...NEW_ROOM_ESSENTIAL_TYPES, ...ELECTRONICS_TYPES, ...LEGACY_TYPES, RETIRED_TYPE];
 const FURNITURE_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Furniture").map((c) => c.singular), ...KIDS_FURNITURE.map((k) => k.name), "Hanging Chair", "Standing Shelf Unit", ...NEW_ROOM_ESSENTIAL_TYPES, ...ELECTRONICS_TYPES, ...LEGACY_TYPES];
 const DECOR_TYPES = [...CATEGORY_TYPES.filter((c) => c.group === "Decor").map((c) => c.singular), ...PLANT_TYPES, "Miscellaneous", ...NEW_DECOR_TYPES, ...LEGACY_TYPES];
 const MISC_TYPES = ["Miscellaneous"];
@@ -594,6 +597,7 @@ function typeGroupFor(typeName, customTypes = []) {
   if (typeName === "Hanging Chair" || typeName === "Standing Shelf Unit" || typeName === "Chair") return "Furniture";
   if (typeName === "Mirror" || typeName === "Plant" || typeName === "Fantasy Decor") return "Decor";
   if (typeName === "Backsplash Tile" || typeName === "Stair Tile") return "Architecture";
+  if (typeName === RETIRED_TYPE) return "Retired";
   if (typeName === "Standing Mirror") return "Decor";
   if (NEW_DECOR_TYPES.includes(typeName)) return "Decor";
   if (ARCHITECTURE_TYPES.includes(typeName)) return "Architecture";
@@ -2459,6 +2463,7 @@ export default function ModelingLibraryApp() {
     { key: "decor", label: "Decor", values: decorTypes, field: "type" },
     { key: "kitchen", label: "Kitchen System", values: kitchenTypes, field: "type" },
     { key: "architecture", label: "Architecture", values: architectureTypes, field: "type" },
+    { key: "retired", label: "Retired Models", values: [RETIRED_TYPE], field: "type" },
     { key: "room", label: "Room", values: rooms, field: "room" },
     { key: "style", label: "Style", values: styles, field: "style" },
   ], [allTypeNames, furnitureTypes, decorTypes, kitchenTypes, architectureTypes, rooms, styles]);
@@ -2484,6 +2489,8 @@ export default function ModelingLibraryApp() {
       res = res.filter((i) => i.typeGroup === "Kitchen");
     } else if (organizeKey === "architecture") {
       res = res.filter((i) => i.typeGroup === "Architecture");
+    } else if (organizeKey === "retired") {
+      res = res.filter((i) => i.typeGroup === "Retired");
     }
     return res;
   }, [items, search, specificValue, organizeMode, organizeKey]);
