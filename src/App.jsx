@@ -47,7 +47,7 @@ const STYLE_LIST = [
   { name: "Bohemian", accent: "#A85C4D" },
   { name: "Art Deco", accent: "#B08A3E" },
 ];
-const STYLE_NAMES = [...STYLE_LIST.map((s) => s.name), "Fantasy", "None"];
+const STYLE_NAMES = [...STYLE_LIST.map((s) => s.name), "Fantasy", "Fairycore", "None"];
 // A curated subset used for automatically generating one item per style per
 // category — not every one of the 15 styles needs its own item in every
 // single category. The full STYLE_LIST stays available in dropdowns for
@@ -55,6 +55,14 @@ const STYLE_NAMES = [...STYLE_LIST.map((s) => s.name), "Fantasy", "None"];
 const DEFAULT_GENERATION_STYLES = STYLE_LIST.filter((s) =>
   ["Modern", "Farmhouse", "Gothic", "Bohemian", "Coastal", "Industrial", "Mid-Century Modern"].includes(s.name)
 );
+// Fantasy and Fairycore also get a full sweep across every core furniture/
+// decor type, same as the curated styles above — kept as a separate list so
+// this can be added on its own without touching STYLE_LIST or anything
+// already generated for the other styles.
+const FANTASY_SWEEP_STYLES = [
+  { name: "Fantasy", accent: "#8B5FBF" },
+  { name: "Fairycore", accent: "#C9A0DC" },
+];
 
 const CATEGORY_TYPES = [
   // Furniture
@@ -488,7 +496,7 @@ function uid(prefix) {
 // Bump this only when buildSeedItems() changes in a way that needs a fresh
 // reconciliation pass (new category, structural fix, etc). Otherwise the
 // background cleanup below skips itself entirely on every normal load.
-const RECONCILIATION_VERSION = "v9";
+const RECONCILIATION_VERSION = "v10";
 
 // Realtime is currently disabled — the WebSocket connection was failing
 // outright (401 on every attempt) and kept retrying indefinitely at the
@@ -613,6 +621,27 @@ function buildSeedItems() {
   // A curated 7-style set per category, not the full 15 — everything else
   // starts Not Started so this is fast to model out at a manageable scale.
   for (const style of DEFAULT_GENERATION_STYLES) {
+    for (const cat of CATEGORY_TYPES) {
+      const now = Date.now() - (idx % 90) * 86400000;
+      items.push({
+        id: uid("item"),
+        name: `${style.name} ${cat.singular}`,
+        type: cat.singular,
+        typeGroup: cat.group,
+        room: cat.room,
+        style: style.name,
+        status: "not-started",
+        photo: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      idx++;
+    }
+  }
+
+  // Fantasy and Fairycore, swept across every one of the same core
+  // furniture/decor categories as the curated styles above.
+  for (const style of FANTASY_SWEEP_STYLES) {
     for (const cat of CATEGORY_TYPES) {
       const now = Date.now() - (idx % 90) * 86400000;
       items.push({
@@ -2117,6 +2146,32 @@ export default function ModelingLibraryApp() {
         } else {
           console.error("Fantasy item backfill failed:", error);
         }
+      }
+
+      // Fantasy/Fairycore full sweep across every core type — same situation:
+      // every one of these 56 types already exists in every database, so the
+      // type-level backfill above never catches a NEW style variant within an
+      // already-existing type. Check each expected {name, type, style} directly.
+      const expectedFantasySweep = [];
+      for (const style of FANTASY_SWEEP_STYLES) {
+        for (const cat of CATEGORY_TYPES) {
+          expectedFantasySweep.push({ name: `${style.name} ${cat.singular}`, type: cat.singular, typeGroup: cat.group, room: cat.room, style: style.name });
+        }
+      }
+      const missingFantasySweep = expectedFantasySweep
+        .filter((f) => !presentNames.has(f.name))
+        .map((f) => {
+          const now = Date.now();
+          return { id: uid("item"), name: f.name, type: f.type, typeGroup: f.typeGroup, room: f.room, style: f.style, status: "not-started", photo: null, createdAt: now, updatedAt: now };
+        });
+      if (missingFantasySweep.length > 0) {
+        const rows = missingFantasySweep.map(itemToRow);
+        for (let i = 0; i < rows.length; i += 500) {
+          const { error } = await supabase.from("items").insert(rows.slice(i, i + 500));
+          if (error) console.error("Fantasy/Fairycore sweep backfill failed:", error);
+        }
+        setItems((prev) => [...prev, ...missingFantasySweep]);
+        fullData = [...fullData, ...missingFantasySweep.map(itemToRow)];
       }
 
       // Clean up duplicates from an earlier bug where a truncated read caused
