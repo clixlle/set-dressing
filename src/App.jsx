@@ -47,7 +47,7 @@ const STYLE_LIST = [
   { name: "Bohemian", accent: "#A85C4D" },
   { name: "Art Deco", accent: "#B08A3E" },
 ];
-const STYLE_NAMES = [...STYLE_LIST.map((s) => s.name), "Fantasy", "Fairycore", "None"];
+const STYLE_NAMES = [...STYLE_LIST.map((s) => s.name), "Fantasy", "Fairycore", "Retired", "None"];
 // A curated subset used for automatically generating one item per style per
 // category — not every one of the 15 styles needs its own item in every
 // single category. The full STYLE_LIST stays available in dropdowns for
@@ -1460,7 +1460,11 @@ function ItemModal({ item, isAdmin, onClose, onSave, onStatusChange, onDelete, f
               <div>
                 <span style={labelStyle}>Object type</span>
                 <select value={draft.type} onChange={(e) => {
-                  setDraft({ ...draft, type: e.target.value, typeGroup: typeGroupFor(e.target.value, customTypes) });
+                  const newType = e.target.value;
+                  setDraft({
+                    ...draft, type: newType, typeGroup: typeGroupFor(newType, customTypes),
+                    style: newType === RETIRED_TYPE ? "Retired" : draft.style,
+                  });
                 }} style={inputStyle}>
                   <optgroup label="Furniture">{furnitureTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
                   <optgroup label="Decor">{decorTypes.map((t) => <option key={t}>{t}</option>)}</optgroup>
