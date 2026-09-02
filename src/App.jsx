@@ -2556,9 +2556,10 @@ export default function ModelingLibraryApp() {
   const architectureTypes = useMemo(() => [...ARCHITECTURE_TYPES, ...customTypes.filter((c) => c.group_name === "Architecture").map((c) => c.name), ...LEGACY_TYPES], [customTypes]);
   const rooms = useMemo(() => [...ROOMS, ...customTypes.filter((c) => c.group_name === "Room").map((c) => c.name)], [customTypes]);
   const styles = useMemo(() => {
-    const builtIn = STYLE_NAMES.filter((s) => s !== "Retired");
+    const excluded = new Set(["Retired", "None"]);
+    const builtIn = STYLE_NAMES.filter((s) => !excluded.has(s));
     const custom = customTypes.filter((c) => c.group_name === "Style").map((c) => c.name);
-    return [...builtIn, ...custom, "Retired"]; // Retired always sorts last, even below anything added later
+    return [...builtIn, ...custom, "None", "Retired"]; // None sorts below everything except Retired, which is always truly last
   }, [customTypes]);
   const allTypeNames = useMemo(() => [...TYPE_NAMES, ...customTypes.filter((c) => ["Furniture", "Decor", "Kitchen", "Architecture"].includes(c.group_name)).map((c) => c.name)], [customTypes]);
 
