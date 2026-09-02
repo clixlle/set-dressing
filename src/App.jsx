@@ -2564,7 +2564,6 @@ export default function ModelingLibraryApp() {
     { key: "decor", label: "Decor", values: decorTypes, field: "type" },
     { key: "kitchen", label: "Kitchen System", values: kitchenTypes, field: "type" },
     { key: "architecture", label: "Architecture", values: architectureTypes, field: "type" },
-    { key: "retired", label: "Retired Models", values: [RETIRED_TYPE], field: "type" },
     { key: "room", label: "Room", values: rooms, field: "room" },
     { key: "style", label: "Style", values: styles, field: "style" },
   ], [allTypeNames, furnitureTypes, decorTypes, kitchenTypes, architectureTypes, rooms, styles]);
