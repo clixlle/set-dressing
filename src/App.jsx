@@ -47,7 +47,7 @@ const STYLE_LIST = [
   { name: "Bohemian", accent: "#A85C4D" },
   { name: "Art Deco", accent: "#B08A3E" },
 ];
-const STYLE_NAMES = [...STYLE_LIST.map((s) => s.name), "Fantasy", "Fairycore", "Retired", "None"];
+const STYLE_NAMES = [...STYLE_LIST.map((s) => s.name), "Fantasy", "Fairycore", "None", "Retired"];
 // A curated subset used for automatically generating one item per style per
 // category — not every one of the 15 styles needs its own item in every
 // single category. The full STYLE_LIST stays available in dropdowns for
