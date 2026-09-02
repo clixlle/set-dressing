@@ -2550,18 +2550,18 @@ export default function ModelingLibraryApp() {
     }
   }, [writeItemRow]);
 
-  const furnitureTypes = useMemo(() => [...FURNITURE_TYPES, ...customTypes.filter((c) => c.group_name === "Furniture").map((c) => c.name)], [customTypes]);
-  const decorTypes = useMemo(() => [...DECOR_TYPES, ...customTypes.filter((c) => c.group_name === "Decor").map((c) => c.name)], [customTypes]);
-  const kitchenTypes = useMemo(() => [...KITCHEN_TYPES, ...customTypes.filter((c) => c.group_name === "Kitchen").map((c) => c.name)], [customTypes]);
-  const architectureTypes = useMemo(() => [...ARCHITECTURE_TYPES, ...customTypes.filter((c) => c.group_name === "Architecture").map((c) => c.name), ...LEGACY_TYPES], [customTypes]);
-  const rooms = useMemo(() => [...ROOMS, ...customTypes.filter((c) => c.group_name === "Room").map((c) => c.name)], [customTypes]);
+  const furnitureTypes = useMemo(() => [...new Set([...FURNITURE_TYPES, ...customTypes.filter((c) => c.group_name === "Furniture").map((c) => c.name)])], [customTypes]);
+  const decorTypes = useMemo(() => [...new Set([...DECOR_TYPES, ...customTypes.filter((c) => c.group_name === "Decor").map((c) => c.name)])], [customTypes]);
+  const kitchenTypes = useMemo(() => [...new Set([...KITCHEN_TYPES, ...customTypes.filter((c) => c.group_name === "Kitchen").map((c) => c.name)])], [customTypes]);
+  const architectureTypes = useMemo(() => [...new Set([...ARCHITECTURE_TYPES, ...customTypes.filter((c) => c.group_name === "Architecture").map((c) => c.name), ...LEGACY_TYPES])], [customTypes]);
+  const rooms = useMemo(() => [...new Set([...ROOMS, ...customTypes.filter((c) => c.group_name === "Room").map((c) => c.name)])], [customTypes]);
   const styles = useMemo(() => {
     const excluded = new Set(["Retired", "None"]);
     const builtIn = STYLE_NAMES.filter((s) => !excluded.has(s));
-    const custom = customTypes.filter((c) => c.group_name === "Style").map((c) => c.name);
-    return [...builtIn, ...custom, "None", "Retired"]; // None sorts below everything except Retired, which is always truly last
+    const custom = customTypes.filter((c) => c.group_name === "Style").map((c) => c.name).filter((n) => !excluded.has(n));
+    return [...new Set([...builtIn, ...custom]), "None", "Retired"]; // None sorts below everything except Retired, which is always truly last
   }, [customTypes]);
-  const allTypeNames = useMemo(() => [...TYPE_NAMES, ...customTypes.filter((c) => ["Furniture", "Decor", "Kitchen", "Architecture"].includes(c.group_name)).map((c) => c.name)], [customTypes]);
+  const allTypeNames = useMemo(() => [...new Set([...TYPE_NAMES, ...customTypes.filter((c) => ["Furniture", "Decor", "Kitchen", "Architecture"].includes(c.group_name)).map((c) => c.name)])], [customTypes]);
 
   const organizeOptions = useMemo(() => [
     { key: "all", label: "All Items", values: allTypeNames, field: "type" },
